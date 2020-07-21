@@ -23,6 +23,11 @@ IF(NOT CATBOOST_OPENSOURCE)
     )
 ENDIF()
 
+IF(OMP_PATH)
+    LDFLAGS(${OMP_PATH}/lib/libomp.so)
+    ADDINCL(contrib/libs/cxxsupp/openmp)
+ENDIF()
+
 NO_LINT()
 
 END()
