@@ -1000,8 +1000,9 @@ void CalcApproxForLeafStruct(
     TVector<ui64> randomSeeds = GenRandUI64Vector(fold.BodyTailArr.ysize(), randomSeed);
     approxesDelta->resize(fold.BodyTailArr.ysize());
     const bool isMultiRegression = dynamic_cast<const TMultiDerCalcer*>(&error) != nullptr;
-    ctx->LocalExecutor->ExecRangeWithThrow(
-        [&](int bodyTailId) {
+/*    ctx->LocalExecutor->ExecRangeWithThrow(
+        [&](int bodyTailId) {*/
+    for(int bodyTailId = 0; bodyTailId < fold.BodyTailArr.ysize(); ++bodyTailId) {
             const TFold::TBodyTail& bt = fold.BodyTailArr[bodyTailId];
             TVector<TVector<double>>& approxDeltas = (*approxesDelta)[bodyTailId];
             const double initValue = GetNeutralApprox(error.GetIsExpApprox());
@@ -1030,8 +1031,8 @@ void CalcApproxForLeafStruct(
                     &approxDeltas,
                     /*sumLeafDeltas*/ nullptr);
             }
-        },
+        }/*,
         0,
         fold.BodyTailArr.ysize(),
-        NPar::TLocalExecutor::WAIT_COMPLETE);
+        NPar::TLocalExecutor::WAIT_COMPLETE);*/
 }

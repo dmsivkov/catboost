@@ -300,22 +300,24 @@ void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* c
 
         if (ctx->Params.SystemOptions->IsSingleHost()) {
             const TVector<ui64> randomSeeds = GenRandUI64Vector(foldCount, ctx->LearnProgress->Rand.GenRand());
-            ctx->LocalExecutor->ExecRangeWithThrow(
+/*            ctx->LocalExecutor->ExecRangeWithThrow(
                 [&](int foldId) {
+*/
+        for(int foldId = 0; foldId < foldCount; ++foldId) {
                     UpdateLearningFold(
                         data,
                         *error,
                         bestTree,
-                        randomSeeds[foldId],
-                        trainFolds[foldId],
+                        randomSeeds[0],
+                        trainFolds[0],
                         ctx
                     );
-                },
+                }/*,
                 0,
                 foldCount,
                 NPar::TLocalExecutor::WAIT_COMPLETE
             );
-
+*/
             profile.AddOperation("CalcApprox tree struct and update tree structure approx");
             CheckInterrupted(); // check after long-lasting operation
 
