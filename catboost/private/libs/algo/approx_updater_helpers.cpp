@@ -19,10 +19,10 @@ static void UpdateAvrgApprox(
 ) {
     Y_ASSERT(learnProgress->AveragingFold.BodyTailArr.ysize() == 1);
     const TVector<size_t>& testOffsets = CalcTestOffsets(learnSampleCount, testData);
-/*
+
     localExecutor->ExecRange(
-        [&](int setIdx){*/
-for(int setIdx = 0; setIdx < 1 + SafeIntegerCast<int>(testData.size()); ++setIdx) {
+        [&](int setIdx){
+//for(int setIdx = 0; setIdx < 1 + SafeIntegerCast<int>(testData.size()); ++setIdx) {
             if (setIdx == 0) { // learn data set
                 if (learnSampleCount == 0) {
                     return;
@@ -66,10 +66,10 @@ for(int setIdx = 0; setIdx < 1 + SafeIntegerCast<int>(testData.size()); ++setIdx
                 Y_ASSERT(learnProgress->TestApprox[testIdx][0].size() == testSampleCount);
                 UpdateApprox(updateTestApprox, treeDelta, &learnProgress->TestApprox[testIdx], localExecutor);
             }
-        }/*,
+        },
         0,
         1 + SafeIntegerCast<int>(testData.size()),
-        NPar::TLocalExecutor::WAIT_COMPLETE);*/
+        NPar::TLocalExecutor::WAIT_COMPLETE);
 }
 
 void UpdateAvrgApprox(
