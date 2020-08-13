@@ -661,10 +661,10 @@ static void CalcBestScore(
                 }
             }
             TVector<TVector<double>> allScores(candidate.Candidates.size());
-            ctx->LocalExecutor->ExecRange(
+/*            ctx->LocalExecutor->ExecRange(
                 [&](int oneCandidate) {
-     
-//for(int oneCandidate = 0; oneCandidate < candidate.Candidates.ysize(); ++oneCandidate) {
+     */
+for(int oneCandidate = 0; oneCandidate < candidate.Candidates.ysize(); ++oneCandidate) {
                     THolder<IScoreCalcer> scoreCalcer;
                     if (IsPairwiseScoring(ctx->Params.LossFunctionDescription->GetLossFunction())) {
                         scoreCalcer.Reset(new TPairwiseScoreCalcer);
@@ -693,10 +693,10 @@ static void CalcBestScore(
                         /*pairwiseStats*/nullptr,
                         scoreCalcer.Get());
                     scoreCalcer->GetScores().swap(allScores[oneCandidate]);
-                },
+                }/*,
                 0,
                 candidate.Candidates.ysize(),
-                NPar::TLocalExecutor::WAIT_COMPLETE);
+                NPar::TLocalExecutor::WAIT_COMPLETE);*/
 
             if (splitEnsemble.IsSplitOfType(ESplitType::OnlineCtr) && candidate.ShouldDropCtrAfterCalc) {
                 fold->GetCtrRef(splitEnsemble.SplitCandidate.Ctr.Projection).Feature.clear();
