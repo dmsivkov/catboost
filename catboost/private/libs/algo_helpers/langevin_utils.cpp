@@ -6,6 +6,7 @@
 #include <catboost/private/libs/options/restrictions.h>
 
 #include <library/cpp/threading/local_executor/local_executor.h>
+#include <library/cpp/threading/local_executor/omp_local_executor.h>
 
 #include <util/generic/vector.h>
 #include <util/random/fast.h>
@@ -19,12 +20,13 @@ static double CalcLangevinNoiseRate(float diffusionTemperature, float learningRa
     return sqrt(2.0 / learningRate / diffusionTemperature);
 }
 
+template <typename LocalExecutorType>
 void AddLangevinNoiseToDerivatives(
     float diffusionTemperature,
     float learningRate,
     ui64 randomSeed,
     TVector<TVector<double>>* derivatives,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     if (diffusionTemperature == 0.0f) {
         return;
@@ -44,10 +46,26 @@ void AddLangevinNoiseToDerivatives(
             },
             0,
             rangesGenerator.RangesCount(),
-            NPar::TLocalExecutor::WAIT_COMPLETE
+            LocalExecutorType::WAIT_COMPLETE
         );
     }
 }
+template
+void AddLangevinNoiseToDerivatives<NPar::TLocalExecutor>(
+    float diffusionTemperature,
+    float learningRate,
+    ui64 randomSeed,
+    TVector<TVector<double>>* derivatives,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+void AddLangevinNoiseToDerivatives<OMPNPar::TLocalExecutor>(
+    float diffusionTemperature,
+    float learningRate,
+    ui64 randomSeed,
+    TVector<TVector<double>>* derivatives,
+    OMPNPar::TLocalExecutor* localExecutor
+);
 
 void AddLangevinNoiseToLeafDerivativesSum(
     float diffusionTemperature,

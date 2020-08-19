@@ -15,6 +15,7 @@
 
 #include <util/stream/output.h>
 
+template <typename LocalExecutorType>
 static void CalcLeafDer(
     TConstArrayRef<float> labels,
     TConstArrayRef<float> weights,
@@ -25,9 +26,9 @@ static void CalcLeafDer(
     ELeavesEstimation estimationMethod,
     TArrayRef<TDers> weightedDers,
     TSum* leafDer,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
-    NPar::TLocalExecutor::TExecRangeParams blockParams(0, objectsCount);
+    typename LocalExecutorType::TExecRangeParams blockParams(0, objectsCount);
     blockParams.SetBlockCount(CB_THREAD_LIMIT);
 
     TVector<TDers> blockBucketDers(
@@ -81,7 +82,7 @@ static void CalcLeafDer(
         },
         0,
         blockParams.GetBlockCount(),
-        NPar::TLocalExecutor::WAIT_COMPLETE);
+        LocalExecutorType::WAIT_COMPLETE);
 
     if (estimationMethod == ELeavesEstimation::Newton) {
         for (int blockId = 0; blockId < blockParams.GetBlockCount(); ++blockId) {
@@ -143,18 +144,19 @@ inline void UpdateApproxKernel(double leafDelta, double* deltas) {
     deltas[7] = UpdateApprox<StoreExpApprox>(deltas[7], leafDelta);
 }
 
+template <typename LocalExecutorType>
 static void UpdateApproxDeltas(
     bool storeExpApprox,
     int docCount,
     double leafDelta,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TArrayRef<double> deltas
 ) {
     if (storeExpApprox) {
         leafDelta = fast_exp(leafDelta);
     }
 
-    NPar::TLocalExecutor::TExecRangeParams blockParams(0, docCount);
+    typename LocalExecutorType::TExecRangeParams blockParams(0, docCount);
     blockParams.SetBlockSize(1000);
     const auto getUpdateApproxBlockLambda = [&](auto boolConst) -> std::function<void(int)> {
         return [=](int blockIdx) {
@@ -170,7 +172,7 @@ static void UpdateApproxDeltas(
         DispatchGenericLambda(getUpdateApproxBlockLambda, storeExpApprox),
         0,
         blockParams.GetBlockCount(),
-        NPar::TLocalExecutor::WAIT_COMPLETE);
+        LocalExecutorType::WAIT_COMPLETE);
 }
 
 static void CalcExactLeafDeltas(
@@ -189,12 +191,13 @@ static void CalcExactLeafDeltas(
     leafDelta = *NCB::CalcOptimumConstApprox(lossDescription, samples, weights);
 }
 
+template<typename LocalExecutorType>
 static void CalcLeafValuesSimple(
     const IDerCalcer& error,
     const NCatboostOptions::TCatBoostOptions& params,
     TLeafStatistics* statistics,
     TArrayRef<TDers> weightedDers,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     Y_ASSERT(error.GetErrorType() == EErrorType::PerObjectError);
     const auto& learnerOptions = params.ObliviousTreeOptions.Get();
@@ -304,12 +307,13 @@ static void CalcLeafValuesSimple(
     );
 }
 
+template <typename LocalExecutorType>
 void CalcLeafValues(
     const IDerCalcer& error,
     const NCatboostOptions::TCatBoostOptions& params,
     TLeafStatistics* statistics,
     TRestorableFastRng64* rng,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TArrayRef<TDers> weightedDers
 ) {
     Y_ASSERT(error.GetErrorType() == EErrorType::PerObjectError);
@@ -352,6 +356,24 @@ void CalcLeafValues(
         );
     }
 }
+template
+void CalcLeafValues<NPar::TLocalExecutor>(
+    const IDerCalcer& error,
+    const NCatboostOptions::TCatBoostOptions& params,
+    TLeafStatistics* statistics,
+    TRestorableFastRng64* rng,
+    NPar::TLocalExecutor* localExecutor,
+    TArrayRef<TDers> weightedDers
+);
+template
+void CalcLeafValues<OMPNPar::TLocalExecutor>(
+    const IDerCalcer& error,
+    const NCatboostOptions::TCatBoostOptions& params,
+    TLeafStatistics* statistics,
+    TRestorableFastRng64* rng,
+    OMPNPar::TLocalExecutor* localExecutor,
+    TArrayRef<TDers> weightedDers
+);
 
 void AssignLeafValues(
     const TVector<TLeafStatistics>& leafStatistics,

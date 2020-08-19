@@ -17,7 +17,7 @@
 #include <library/cpp/threading/local_executor/local_executor.h>
 
 
-template <typename TStep>
+template <typename TStep, typename LocalExecutorType>
 void CalcLeafValuesMulti(
     const NCatboostOptions::TCatBoostOptions& params,
     bool isLeafwise,
@@ -33,7 +33,7 @@ void CalcLeafValuesMulti(
     int objectsInLeafCount,
     NCatboostOptions::TLossDescription metricDescriptions,
     TRestorableFastRng64* rng,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TVector<TStep>* sumLeafDeltas,
     TVector<TVector<double>>* approx
 ) {

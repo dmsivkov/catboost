@@ -7,6 +7,7 @@
 #include <catboost/private/libs/options/loss_description.h>
 
 #include <library/cpp/threading/local_executor/local_executor.h>
+#include <library/cpp/threading/local_executor/omp_local_executor.h>
 
 #include <util/generic/vector.h>
 
@@ -73,6 +74,7 @@ static void GenerateYetiRankPairsForQuery(
     }
 }
 
+template <typename LocalExecutorType>
 void UpdatePairsForYetiRank(
     TConstArrayRef<double> approxes,
     TConstArrayRef<float> relevances,
@@ -81,17 +83,17 @@ void UpdatePairsForYetiRank(
     int queryBegin,
     int queryEnd,
     TVector<TQueryInfo>* queriesInfo,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     const int permutationCount = NCatboostOptions::GetYetiRankPermutations(lossDescription);
     const double decaySpeed = NCatboostOptions::GetYetiRankDecay(lossDescription);
 
-    NPar::TLocalExecutor::TExecRangeParams blockParams(queryBegin, queryEnd);
+    typename LocalExecutorType::TExecRangeParams blockParams(queryBegin, queryEnd);
     blockParams.SetBlockCount(CB_THREAD_LIMIT);
     const int blockSize = blockParams.GetBlockSize();
     const ui32 blockCount = blockParams.GetBlockCount();
     const TVector<ui64> randomSeeds = GenRandUI64Vector(blockCount, randomSeed);
-    NPar::ParallelFor(
+    common::ParallelFor(
         *localExecutor,
         0,
         blockCount,
@@ -115,13 +117,36 @@ void UpdatePairsForYetiRank(
         }
     );
 }
+template
+void UpdatePairsForYetiRank<NPar::TLocalExecutor>(
+    TConstArrayRef<double> approxes,
+    TConstArrayRef<float> relevances,
+    const NCatboostOptions::TLossDescription& lossDescription,
+    ui64 randomSeed,
+    int queryBegin,
+    int queryEnd,
+    TVector<TQueryInfo>* queriesInfo,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+void UpdatePairsForYetiRank<OMPNPar::TLocalExecutor>(
+    TConstArrayRef<double> approxes,
+    TConstArrayRef<float> relevances,
+    const NCatboostOptions::TLossDescription& lossDescription,
+    ui64 randomSeed,
+    int queryBegin,
+    int queryEnd,
+    TVector<TQueryInfo>* queriesInfo,
+    OMPNPar::TLocalExecutor* localExecutor
+);
 
+template <typename LocalExecutorType>
 void YetiRankRecalculation(
     const TFold& ff,
     const TFold::TBodyTail& bt,
     const NCatboostOptions::TCatBoostOptions& params,
     ui64 randomSeed,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TVector<TQueryInfo>* recalculatedQueriesInfo,
     TVector<float>* recalculatedPairwiseWeights
 ) {
@@ -140,3 +165,24 @@ void YetiRankRecalculation(
     recalculatedPairwiseWeights->resize(bt.PairwiseWeights.ysize());
     CalcPairwiseWeights(*recalculatedQueriesInfo, bt.TailQueryFinish, recalculatedPairwiseWeights);
 }
+
+template
+void YetiRankRecalculation<NPar::TLocalExecutor>(
+    const TFold& ff,
+    const TFold::TBodyTail& bt,
+    const NCatboostOptions::TCatBoostOptions& params,
+    ui64 randomSeed,
+    NPar::TLocalExecutor* localExecutor,
+    TVector<TQueryInfo>* recalculatedQueriesInfo,
+    TVector<float>* recalculatedPairwiseWeights
+);
+template
+void YetiRankRecalculation<OMPNPar::TLocalExecutor>(
+    const TFold& ff,
+    const TFold::TBodyTail& bt,
+    const NCatboostOptions::TCatBoostOptions& params,
+    ui64 randomSeed,
+    OMPNPar::TLocalExecutor* localExecutor,
+    TVector<TQueryInfo>* recalculatedQueriesInfo,
+    TVector<float>* recalculatedPairwiseWeights
+);

@@ -95,12 +95,12 @@ inline ui32 AdjustBlockCountLimit(ui32 objectCount, ui32 regularBlockCount) {
     return (objectCount < 10000) ? 1 : regularBlockCount;
 }
 
-template <typename TUpdateFunc>
+template <typename TUpdateFunc, typename LocalExecutorType>
 inline void UpdateApprox(
     const TUpdateFunc& updateFunc,
     const TVector<TVector<double>>& delta,
     TVector<TVector<double>>* approx,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     Y_ASSERT(delta.size() == approx->size());
     for (size_t dimensionIdx : xrange(delta.size())) {
@@ -112,22 +112,23 @@ inline void UpdateApprox(
             continue;
         }
 
-        NPar::TLocalExecutor::TExecRangeParams blockParams(0, approxDim.size());
+        typename LocalExecutorType::TExecRangeParams blockParams(0, approxDim.size());
         blockParams.SetBlockCount(AdjustBlockCountLimit(approxDim.size(), localExecutor->GetThreadCount() + 1));
         localExecutor->ExecRange(
             [=, &updateFunc](int idx) {
                 updateFunc(deltaDim, approxDim, idx);
             },
             blockParams,
-            NPar::TLocalExecutor::WAIT_COMPLETE
+            LocalExecutorType::WAIT_COMPLETE
         );
     }
 }
 
+template <typename LocalExecutorType>
 inline void CopyApprox(
     const TVector<TVector<double>>& src,
     TVector<TVector<double>>* dst,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     if (dst->empty() && !src.empty()) {
         dst->resize(src.size());

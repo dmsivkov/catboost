@@ -278,7 +278,7 @@ void MapGenericRemoteCalcScore(
     size_t allScoresOffset = 0;
     for (auto& candidatesContext : *candidatesContexts) {
         auto& candidateList = candidatesContext.CandidateList;
-        ctx->LocalExecutor->ExecRange(
+        ctx->OMPLocalExecutor->ExecRange(
             [&] (int candidateIdx) {
                 auto& candidates = candidateList[candidateIdx].Candidates;
                 Y_VERIFY(candidates.size() > 0);

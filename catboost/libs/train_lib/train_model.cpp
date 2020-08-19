@@ -374,6 +374,8 @@ static void Train(
     const auto onSaveSnapshotCallback = [&] (IOutputStream* out) {
         trainingCallbacks->OnSaveSnapshot(out);
     };
+    OMPNPar::TLocalExecutor omp_executor;
+    ctx->OMPLocalExecutor = &omp_executor;
 
     for (ui32 iter = ctx->LearnProgress->GetCurrentTrainingIterationCount();
          continueTraining && (iter < ctx->Params.BoostingOptions->IterationCount);
@@ -797,7 +799,6 @@ namespace {
                 std::move(initModelApplyCompatiblePools),
                 localExecutor
             );
-
             DumpMemUsage("Before start train");
 
             const auto& systemOptions = ctx.Params.SystemOptions;
@@ -1108,7 +1109,7 @@ void TrainModel(
 
 
     NPar::TLocalExecutor executor;
-    executor.RunAdditionalThreads(catBoostOptions.SystemOptions.Get().NumThreads.Get() - 1);
+    //executor.RunAdditionalThreads(catBoostOptions.SystemOptions.Get().NumThreads.Get() - 1);
 
     TVector<NJson::TJsonValue> classLabels = catBoostOptions.DataProcessingOptions->ClassLabels;
     const auto objectsOrder = catBoostOptions.DataProcessingOptions->HasTimeFlag.Get() ?

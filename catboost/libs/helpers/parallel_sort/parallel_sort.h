@@ -1,10 +1,23 @@
 #pragma once
 
 #include <library/cpp/threading/local_executor/local_executor.h>
+#include <library/cpp/threading/local_executor/omp_local_executor.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/vector.h>
+namespace common {
 
+template <typename TBody>
+inline void ParallelFor(NPar::TLocalExecutor& executor, ui32 from, ui32 to, TBody&& body) {
+    NPar::ParallelFor(executor, from, to, std::forward<TBody>(body));
+}
+
+template <typename TBody>
+inline void ParallelFor(OMPNPar::TLocalExecutor& executor, ui32 from, ui32 to, TBody&& body) {
+    OMPNPar::ParallelFor(executor, from, to, std::forward<TBody>(body));
+}
+
+}
 namespace NCB {
 
     struct TMergeData {
@@ -61,11 +74,11 @@ namespace NCB {
         mergeData->push_back({left1, mergeOperation.Right1, left2, mergeOperation.Right2, outputIndex});
     }
 
-    template <class TElement, typename TCompare>
+    template <class TElement, typename TCompare, typename LocalExecutorType>
     inline void ParallelMergeSort(
         TCompare cmp,
         TVector<TElement>* elements,
-        NPar::TLocalExecutor* localExecutor,
+        LocalExecutorType* localExecutor,
         TVector<TElement>* buf = nullptr
     ) {
         if (elements->size() <= 1u) {
@@ -85,7 +98,7 @@ namespace NCB {
             startPositions[i] = position;
             position += blockSizes[i];
         }
-        NPar::ParallelFor(
+        common::ParallelFor(
             *localExecutor,
             0,
             threadCount,
@@ -110,7 +123,7 @@ namespace NCB {
                 };
                 DivideMergeIntoParallelMerges(currentMerge, cmp, *elements, &mergeData, &threadsPerMergeCount[i]);
             }
-            NPar::ParallelFor(
+            common::ParallelFor(
                 *localExecutor,
                 0,
                 mergeData.size(),
@@ -125,7 +138,7 @@ namespace NCB {
                     );
                 }
             );
-            NPar::ParallelFor(
+            common::ParallelFor(
                 *localExecutor,
                 0,
                 mergeData.size(),

@@ -8,6 +8,7 @@
 
 #include <util/generic/array_ref.h>
 
+template <typename LocalExecutorType>
 TMetricHolder EvalErrorsWithLeaves(
     const TConstArrayRef<TConstArrayRef<double>> approx,
     const TConstArrayRef<TConstArrayRef<double>> leafDeltas,
@@ -17,5 +18,5 @@ TMetricHolder EvalErrorsWithLeaves(
     TConstArrayRef<float> weight,
     TConstArrayRef<TQueryInfo> queriesInfo,
     const IMetric& error,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 );

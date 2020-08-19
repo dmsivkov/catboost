@@ -430,7 +430,7 @@ static TVector<TVector<double>> CalcScoresForOneCandidateImpl(
 ) {
     TVector<TVector<double>> scores(candidate.Candidates.size());
 
-    ctx->LocalExecutor->ExecRange(
+    ctx->OMPLocalExecutor->ExecRange(
         [&](int subCandId) {
             const auto& candidateInfo = candidate.Candidates[subCandId];
             const auto& splitEnsemble = candidateInfo.SplitEnsemble;

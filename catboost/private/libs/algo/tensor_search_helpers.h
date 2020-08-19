@@ -88,7 +88,7 @@ struct TCandidatesContext {
     TVector<TVector<ui32>> SelectedFeaturesInGroups; // [groupIdx] -> {inGroupIdx_1, ..., inGroupIdx_k}
 };
 
-
+template <typename LocalExecutorType>
 void Bootstrap(
     const NCatboostOptions::TCatBoostOptions& params,
     bool hasOfflineEstimatedFeatures,
@@ -96,7 +96,7 @@ void Bootstrap(
     const TVector<TVector<TVector<double>>>& leafValues,
     TFold* fold,
     TCalcScoreFold* sampledDocs,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TRestorableFastRng64* rand,
     bool shouldSortByLeaf = false,
     ui32 leavesCount = 0
@@ -107,13 +107,14 @@ THolder<IDerCalcer> BuildError(
     const TMaybe<TCustomObjectiveDescriptor>&
 );
 
+template <typename LocalExecutorType>
 void CalcWeightedDerivatives(
     const IDerCalcer& error,
     int bodyTailIdx,
     const NCatboostOptions::TCatBoostOptions& params,
     ui64 randomSeed,
     TFold* takenFold,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 );
 
 void SetBestScore(

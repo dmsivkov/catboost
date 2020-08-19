@@ -57,6 +57,7 @@ inline void AddDersRangeMulti(
     DispatchGenericLambda(addDersRangeMultiImpl, !weight.empty(), !leafIndices.empty(), useHessian, isMultiRegression);
 }
 
+template <typename LocalExecutorType>
 void CalcLeafDersMulti(
     const TVector<TIndexType>& indices,
     TConstArrayRef<TConstArrayRef<float>> target,
@@ -67,7 +68,7 @@ void CalcLeafDersMulti(
     int sampleCount,
     bool isUpdateWeight,
     ELeavesEstimation estimationMethod,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TVector<TSumMulti>* leafDers
 ) {
     const int approxDimension = approx.ysize();
@@ -115,6 +116,34 @@ void CalcLeafDersMulti(
         leafDers
     );
 }
+template
+void CalcLeafDersMulti<NPar::TLocalExecutor>(
+    const TVector<TIndexType>& indices,
+    TConstArrayRef<TConstArrayRef<float>> target,
+    TConstArrayRef<float> weight,
+    const TVector<TVector<double>>& approx,
+    const TVector<TVector<double>>& approxDeltas,
+    const IDerCalcer& error,
+    int sampleCount,
+    bool isUpdateWeight,
+    ELeavesEstimation estimationMethod,
+    NPar::TLocalExecutor* localExecutor,
+    TVector<TSumMulti>* leafDers
+);
+template
+void CalcLeafDersMulti<OMPNPar::TLocalExecutor>(
+    const TVector<TIndexType>& indices,
+    TConstArrayRef<TConstArrayRef<float>> target,
+    TConstArrayRef<float> weight,
+    const TVector<TVector<double>>& approx,
+    const TVector<TVector<double>>& approxDeltas,
+    const IDerCalcer& error,
+    int sampleCount,
+    bool isUpdateWeight,
+    ELeavesEstimation estimationMethod,
+    OMPNPar::TLocalExecutor* localExecutor,
+    TVector<TSumMulti>* leafDers
+);
 
 void CalcLeafDeltasMulti(
     const TVector<TSumMulti>& leafDers,
@@ -168,14 +197,15 @@ void CalcLeafDeltasMulti(
     }
 }
 
+template <typename LocalExecutorType>
 void UpdateApproxDeltasMulti(
     const TVector<TIndexType>& indices,
     int docCount,
     TConstArrayRef<TVector<double>> leafDeltas, //leafDeltas[dimension][leafId]
     TVector<TVector<double>>* approxDeltas,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
-    NPar::TLocalExecutor::TExecRangeParams blockParams(0, docCount);
+    typename LocalExecutorType::TExecRangeParams blockParams(0, docCount);
     blockParams.SetBlockSize(AdjustBlockSize(docCount, /*regularBlockSize*/1000));
 
     const auto indicesRef = MakeArrayRef(indices);
@@ -187,18 +217,37 @@ void UpdateApproxDeltasMulti(
                 approxDeltaRef[z] += leafDeltaRef[indicesRef[z]];
             },
             blockParams,
-            NPar::TLocalExecutor::WAIT_COMPLETE);
+            LocalExecutorType::WAIT_COMPLETE);
     }
 }
 
+template
+void UpdateApproxDeltasMulti(
+    const TVector<TIndexType>& indices,
+    int docCount,
+    TConstArrayRef<TVector<double>> leafDeltas, //leafDeltas[dimension][leafId]
+    TVector<TVector<double>>* approxDeltas,
+    NPar::TLocalExecutor* localExecutor
+);
+
+template
+void UpdateApproxDeltasMulti(
+    const TVector<TIndexType>& indices,
+    int docCount,
+    TConstArrayRef<TVector<double>> leafDeltas, //leafDeltas[dimension][leafId]
+    TVector<TVector<double>>* approxDeltas,
+    OMPNPar::TLocalExecutor* localExecutor
+);
+
+template <typename LocalExecutorType>
 void UpdateApproxDeltasMulti(
     const TVector<TIndexType>& /*indices*/,
     int docCount,
     TConstArrayRef<double> leafDeltas, //leafDeltas[dimension]
     TVector<TVector<double>>* approxDeltas,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
-    NPar::TLocalExecutor::TExecRangeParams blockParams(0, docCount);
+    typename LocalExecutorType::TExecRangeParams blockParams(0, docCount);
     blockParams.SetBlockSize(AdjustBlockSize(docCount, /*regularBlockSize*/1000));
 
     for (int dim = 0; dim < leafDeltas.ysize(); ++dim) {
@@ -208,6 +257,22 @@ void UpdateApproxDeltasMulti(
                 approxDeltaRef[z] += leafDeltas[dim];
             },
             blockParams,
-            NPar::TLocalExecutor::WAIT_COMPLETE);
+            LocalExecutorType::WAIT_COMPLETE);
     }
 }
+template
+void UpdateApproxDeltasMulti<NPar::TLocalExecutor>(
+    const TVector<TIndexType>& /*indices*/,
+    int docCount,
+    TConstArrayRef<double> leafDeltas, //leafDeltas[dimension]
+    TVector<TVector<double>>* approxDeltas,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+void UpdateApproxDeltasMulti<OMPNPar::TLocalExecutor>(
+    const TVector<TIndexType>& /*indices*/,
+    int docCount,
+    TConstArrayRef<double> leafDeltas, //leafDeltas[dimension]
+    TVector<TVector<double>>* approxDeltas,
+    OMPNPar::TLocalExecutor* localExecutor
+);

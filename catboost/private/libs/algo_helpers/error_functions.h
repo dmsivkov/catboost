@@ -14,6 +14,7 @@
 #include <library/cpp/containers/2d_array/2d_array.h>
 #include <library/cpp/fast_exp/fast_exp.h>
 #include <library/cpp/threading/local_executor/local_executor.h>
+#include <library/cpp/threading/local_executor/omp_local_executor.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/vector.h>
@@ -121,6 +122,19 @@ public:
         TArrayRef<TDers> /*ders*/,
         ui64 /*randomSeed*/,
         NPar::TLocalExecutor* /*localExecutor*/
+    ) const {
+        CB_ENSURE(false, "Not implemented");
+    }
+    virtual void CalcDersForQueries(
+        int /*queryStartIndex*/,
+        int /*queryEndIndex*/,
+        const TVector<double>& /*approx*/,
+        const TVector<float>& /*target*/,
+        const TVector<float>& /*weight*/,
+        const TVector<TQueryInfo>& /*queriesInfo*/,
+        TArrayRef<TDers> /*ders*/,
+        ui64 /*randomSeed*/,
+        OMPNPar::TLocalExecutor* /*localExecutor*/
     ) const {
         CB_ENSURE(false, "Not implemented");
     }
@@ -613,6 +627,45 @@ public:
                 }
             });
     }
+
+    void CalcDersForQueries(
+        int queryStartIndex,
+        int queryEndIndex,
+        const TVector<double>& expApproxes,
+        const TVector<float>& /*targets*/,
+        const TVector<float>& /*weights*/,
+        const TVector<TQueryInfo>& queriesInfo,
+        TArrayRef<TDers> ders,
+        ui64 /*randomSeed*/,
+        OMPNPar::TLocalExecutor* localExecutor
+    ) const override {
+        CB_ENSURE(queryStartIndex < queryEndIndex);
+        const int start = queriesInfo[queryStartIndex].Begin;
+        OMPNPar::ParallelFor(
+            *localExecutor,
+            queryStartIndex,
+            queryEndIndex,
+            [&] (ui32 queryIndex) {
+                const int begin = queriesInfo[queryIndex].Begin;
+                const int end = queriesInfo[queryIndex].End;
+                TDers* dersData = ders.data() + begin - start;
+                Fill(dersData, dersData + end - begin, TDers{/*1st*/0.0, /*2nd*/0.0, /*3rd*/0.0});
+                for (int docId = begin; docId < end; ++docId) {
+                    double winnerDer = 0.0;
+                    double winnerSecondDer = 0.0;
+                    for (const auto& competitor : queriesInfo[queryIndex].Competitors[docId - begin]) {
+                        const double p = expApproxes[competitor.Id + begin] /
+                            (expApproxes[competitor.Id + begin] + expApproxes[docId]);
+                        winnerDer += competitor.Weight * p;
+                        dersData[competitor.Id].Der1 -= competitor.Weight * p;
+                        winnerSecondDer += competitor.Weight * p * (p - 1);
+                        dersData[competitor.Id].Der2 += competitor.Weight * p * (p - 1);
+                    }
+                    dersData[docId - begin].Der1 += winnerDer;
+                    dersData[docId - begin].Der2 += winnerSecondDer;
+                }
+            });
+    }
 };
 
 class TQueryRmseError final : public IDerCalcer {
@@ -636,6 +689,38 @@ public:
     ) const override {
         const int start = queriesInfo[queryStartIndex].Begin;
         NPar::ParallelFor(
+            *localExecutor,
+            queryStartIndex,
+            queryEndIndex,
+            [&] (ui32 queryIndex) {
+                const int begin = queriesInfo[queryIndex].Begin;
+                const int end = queriesInfo[queryIndex].End;
+                const int querySize = end - begin;
+
+                const double queryAvrg = CalcQueryAvrg(begin, querySize, approxes, targets, weights);
+                for (int docId = begin; docId < end; ++docId) {
+                    ders[docId - start].Der1 = targets[docId] - approxes[docId] - queryAvrg;
+                    ders[docId - start].Der2 = -1;
+                    if (!weights.empty()) {
+                        ders[docId - start].Der1 *= weights[docId];
+                        ders[docId - start].Der2 *= weights[docId];
+                    }
+                }
+            });
+    }
+    void CalcDersForQueries(
+        int queryStartIndex,
+        int queryEndIndex,
+        const TVector<double>& approxes,
+        const TVector<float>& targets,
+        const TVector<float>& weights,
+        const TVector<TQueryInfo>& queriesInfo,
+        TArrayRef<TDers> ders,
+        ui64 /*randomSeed*/,
+        OMPNPar::TLocalExecutor* localExecutor
+    ) const override {
+        const int start = queriesInfo[queryStartIndex].Begin;
+        OMPNPar::ParallelFor(
             *localExecutor,
             queryStartIndex,
             queryEndIndex,
@@ -706,6 +791,29 @@ public:
     ) const override {
         int start = queriesInfo[queryStartIndex].Begin;
         NPar::ParallelFor(
+            *localExecutor,
+            queryStartIndex,
+            queryEndIndex,
+            [&](int queryIndex) {
+                int begin = queriesInfo[queryIndex].Begin;
+                int end = queriesInfo[queryIndex].End;
+                CalcDersForSingleQuery(start, begin - start, end - begin, approxes, targets, weights, ders);
+            });
+    }
+
+    void CalcDersForQueries(
+        int queryStartIndex,
+        int queryEndIndex,
+        const TVector<double>& approxes,
+        const TVector<float>& targets,
+        const TVector<float>& weights,
+        const TVector<TQueryInfo>& queriesInfo,
+        TArrayRef<TDers> ders,
+        ui64 /*randomSeed*/,
+        OMPNPar::TLocalExecutor* localExecutor
+    ) const override {
+        int start = queriesInfo[queryStartIndex].Begin;
+        OMPNPar::ParallelFor(
             *localExecutor,
             queryStartIndex,
             queryEndIndex,
@@ -927,6 +1035,42 @@ public:
             });
     }
 
+    void CalcDersForQueries(
+        int queryStartIndex,
+        int queryEndIndex,
+        const TVector<double>& approx,
+        const TVector<float>& target,
+        const TVector<float>& /*weights*/,
+        const TVector<TQueryInfo>& queriesInfo,
+        TArrayRef<TDers> ders,
+        ui64 randomSeed,
+        OMPNPar::TLocalExecutor* localExecutor
+    ) const override {
+        NPar::TLocalExecutor::TExecRangeParams blockParams(queryStartIndex, queryEndIndex);
+        blockParams.SetBlockCount(CB_THREAD_LIMIT);
+        const int blockSize = blockParams.GetBlockSize();
+        const int blockCount = blockParams.GetBlockCount();
+        const TVector<ui64> randomSeeds = GenRandUI64Vector(blockCount, randomSeed);
+        const int start = queriesInfo[queryStartIndex].Begin;
+
+        OMPNPar::ParallelFor(
+            *localExecutor,
+            0,
+            static_cast<ui32>(blockCount),
+            [&](int blockId) {
+                TRestorableFastRng64 rand(randomSeeds[blockId]);
+                rand.Advance(10);
+                const int from = blockId * blockSize;
+                const int to = Min<int>((blockId + 1) * blockSize, queryEndIndex);
+                for (int queryIndex = from; queryIndex < to; ++queryIndex) {
+                    int begin = queriesInfo[queryIndex].Begin;
+                    int end = queriesInfo[queryIndex].End;
+                    CalcQueryDers(begin, begin - start, end - begin, approx, target, ders, &rand);
+                }
+            });
+    }
+
+
 private:
     void CalcQueryDers(
         int offset,
@@ -1010,6 +1154,17 @@ public:
         TArrayRef<TDers> ders,
         ui64 randomSeed,
         NPar::TLocalExecutor* localExecutor
+    ) const override;
+    void CalcDersForQueries(
+        int queryStartIndex,
+        int queryEndIndex,
+        const TVector<double>& approxes,
+        const TVector<float>& target,
+        const TVector<float>& /*weights*/,
+        const TVector<TQueryInfo>& queriesInfo,
+        TArrayRef<TDers> ders,
+        ui64 randomSeed,
+        OMPNPar::TLocalExecutor* localExecutor
     ) const override;
 
 private:

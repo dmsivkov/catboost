@@ -16,11 +16,11 @@
 
 struct TLearnProgress;
 
-template <bool StoreExpApprox>
+template <bool StoreExpApprox, typename LocalExecutorType>
 inline void UpdateBodyTailApprox(
     const TVector<TVector<TVector<double>>>& approxDelta,
     double learningRate,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TFold* fold
 ) {
     const auto applyLearningRate = [=](TConstArrayRef<double> delta, TArrayRef<double> approx, size_t idx) {
@@ -35,6 +35,7 @@ inline void UpdateBodyTailApprox(
     }
 }
 
+template <typename LocalExecutorType>
 void UpdateAvrgApprox(
     bool storeExpApprox,
     ui32 learnSampleCount,
@@ -42,5 +43,5 @@ void UpdateAvrgApprox(
     const TVector<TVector<double>>& treeDelta,
     TConstArrayRef<NCB::TTrainingDataProviderPtr> testData, // can be empty
     TLearnProgress* learnProgress,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 );

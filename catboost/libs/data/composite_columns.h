@@ -78,6 +78,20 @@ namespace NCB {
             );
         }
 
+        THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
+            const TCloningParams& cloningParams,
+            OMPNPar::TLocalExecutor* localExecutor
+        ) const override {
+            return MakeHolder<TPackedBinaryValuesHolderImpl>(
+                this->GetId(),
+                DynamicHolderCast<TBinaryPacksArrayHolder>(
+                    PacksData->CloneWithNewSubsetIndexing(cloningParams, localExecutor),
+                    "Column type changed after cloning"
+                ),
+                BitIdx
+            );
+        }
+
         IDynamicBlockIteratorBasePtr GetBlockIterator(ui32 offset = 0) const override {
             auto compressedArrayData = PacksData->GetCompressedData();
             const TCompressedArray& compressedArray = *compressedArrayData.GetSrc();
@@ -155,6 +169,19 @@ namespace NCB {
         THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
             const TCloningParams& cloningParams,
             NPar::TLocalExecutor* localExecutor
+        ) const override {
+            return MakeHolder<TBundlePartValuesHolderImpl>(
+                this->GetId(),
+                DynamicHolderCast<TExclusiveFeatureBundleArrayHolder>(
+                    BundlesData->CloneWithNewSubsetIndexing(cloningParams, localExecutor),
+                    "Column type changed after cloning"
+                ),
+                BoundsInBundle
+            );
+        }
+        THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
+            const TCloningParams& cloningParams,
+            OMPNPar::TLocalExecutor* localExecutor
         ) const override {
             return MakeHolder<TBundlePartValuesHolderImpl>(
                 this->GetId(),
@@ -265,7 +292,19 @@ namespace NCB {
                 InGroupIdx
             );
         }
-
+        THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
+            const TCloningParams& cloningParams,
+            OMPNPar::TLocalExecutor* localExecutor
+        ) const override {
+            return MakeHolder<TFeaturesGroupPartValuesHolderImpl>(
+                this->GetId(),
+                DynamicHolderCast<TFeaturesGroupArrayHolder>(
+                    GroupData->CloneWithNewSubsetIndexing(cloningParams, localExecutor),
+                    "Column type changed after cloning"
+                ),
+                InGroupIdx
+            );
+        }
         IDynamicBlockIteratorBasePtr GetBlockIterator(ui32 offset = 0) const override {
             auto compressedArrayData = GroupData->GetCompressedData();
             const TCompressedArray& compressedArray = *compressedArrayData.GetSrc();

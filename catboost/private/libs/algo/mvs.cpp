@@ -34,8 +34,9 @@ static double CalculateLastIterMeanLeafValue(const TVector<TVector<TVector<doubl
     return sumOverLeaves / numLeaves;
 }
 
-static double CalculateMeanGradValue(const TVector<TConstArrayRef<double>>& derivatives, ui32 cnt, NPar::TLocalExecutor* localExecutor) {
-        NPar::TLocalExecutor::TExecRangeParams blockParams(0, cnt);
+template <typename LocalExecutorType>
+static double CalculateMeanGradValue(const TVector<TConstArrayRef<double>>& derivatives, ui32 cnt, LocalExecutorType* localExecutor) {
+        typename LocalExecutorType::TExecRangeParams blockParams(0, cnt);
         blockParams.SetBlockCount(CB_THREAD_LIMIT);
         TVector<double> gradSumInBlock(blockParams.GetBlockCount(), 0.0);
         localExecutor->ExecRange(
@@ -57,17 +58,18 @@ static double CalculateMeanGradValue(const TVector<TConstArrayRef<double>>& deri
             },
             0,
             blockParams.GetBlockCount(),
-            NPar::TLocalExecutor::WAIT_COMPLETE
+            LocalExecutorType::WAIT_COMPLETE
         );
 
         const double sumOfGradients = Accumulate(gradSumInBlock.begin(), gradSumInBlock.end(), 0.0);
         return sumOfGradients / cnt;
 }
 
+template <typename LocalExecutorType>
 double TMvsSampler::GetLambda(
     const TVector<TConstArrayRef<double>>& derivatives,
     const TVector<TVector<TVector<double>>>& leafValues,
-    NPar::TLocalExecutor* localExecutor) const {
+    LocalExecutorType* localExecutor) const {
 
     if (Lambda.Defined()) {
         return Lambda.GetRef();
@@ -77,6 +79,16 @@ double TMvsSampler::GetLambda(
         : CalculateMeanGradValue(derivatives, SampleCount, localExecutor);
     return mean * mean;
 }
+template
+double TMvsSampler::GetLambda<NPar::TLocalExecutor>(
+    const TVector<TConstArrayRef<double>>& derivatives,
+    const TVector<TVector<TVector<double>>>& leafValues,
+    NPar::TLocalExecutor* localExecutor) const;
+template
+double TMvsSampler::GetLambda<OMPNPar::TLocalExecutor>(
+    const TVector<TConstArrayRef<double>>& derivatives,
+    const TVector<TVector<TVector<double>>>& leafValues,
+    OMPNPar::TLocalExecutor* localExecutor) const;
 
 double TMvsSampler::CalculateThreshold(
     TVector<double>::iterator candidatesBegin,
@@ -117,11 +129,12 @@ double TMvsSampler::CalculateThreshold(
     }
 }
 
+template <typename LocalExecutorType>
 void TMvsSampler::GenSampleWeights(
     EBoostingType boostingType,
     const TVector<TVector<TVector<double>>>& leafValues,
     TRestorableFastRng64* rand,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TFold* fold) const {
 
     if (SampleRate == 1.0f) {
@@ -160,7 +173,7 @@ void TMvsSampler::GenSampleWeights(
                 },
                 0,
                 fold->BodyTailArr.size(),
-                NPar::TLocalExecutor::WAIT_COMPLETE
+                LocalExecutorType::WAIT_COMPLETE
             );
             for (auto dim : xrange(approxDimension)) {
                 derivatives[dim] = tailDerivatives[dim];
@@ -169,7 +182,7 @@ void TMvsSampler::GenSampleWeights(
 
         double lambda = GetLambda(derivatives, leafValues, localExecutor);
 
-        NPar::TLocalExecutor::TExecRangeParams blockParams(0, SampleCount);
+        typename LocalExecutorType::TExecRangeParams blockParams(0, SampleCount);
         blockParams.SetBlockSize(BlockSize);
         const ui64 randSeed = rand->GenRand();
         localExecutor->ExecRange(
@@ -218,7 +231,21 @@ void TMvsSampler::GenSampleWeights(
             },
             0,
             blockParams.GetBlockCount(),
-            NPar::TLocalExecutor::WAIT_COMPLETE
+            LocalExecutorType::WAIT_COMPLETE
         );
     }
 }
+template
+void TMvsSampler::GenSampleWeights<NPar::TLocalExecutor>(
+    EBoostingType boostingType,
+    const TVector<TVector<TVector<double>>>& leafValues,
+    TRestorableFastRng64* rand,
+    NPar::TLocalExecutor* localExecutor,
+    TFold* fold) const;
+template
+void TMvsSampler::GenSampleWeights<OMPNPar::TLocalExecutor>(
+    EBoostingType boostingType,
+    const TVector<TVector<TVector<double>>>& leafValues,
+    TRestorableFastRng64* rand,
+    OMPNPar::TLocalExecutor* localExecutor,
+    TFold* fold) const;

@@ -12,6 +12,7 @@
 #include <catboost/libs/helpers/polymorphic_type_containers.h>
 
 #include <library/cpp/threading/local_executor/local_executor.h>
+#include <library/cpp/threading/local_executor/omp_local_executor.h>
 
 #include <util/system/types.h>
 #include <util/generic/noncopyable.h>
@@ -135,7 +136,10 @@ namespace NCB {
             const TCloningParams& cloningParams,
             NPar::TLocalExecutor* localExecutor
         ) const = 0;
-
+        virtual THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
+            const TCloningParams& cloningParams,
+            OMPNPar::TLocalExecutor* localExecutor
+        ) const = 0;
     private:
         ui32 FeatureId;
         ui32 Size;
@@ -236,6 +240,20 @@ namespace NCB {
             );
         }
 
+        template<class TBlockCallable>
+        void ParallelForEachBlock(OMPNPar::TLocalExecutor* localExecutor, TBlockCallable&& blockCallable, size_t blockSize = 1024) const {
+            OMPNPar::TLocalExecutor::TExecRangeParams blockParams(0, this->GetSize());
+            blockParams.SetBlockCount(localExecutor->GetThreadCount() + 1);
+            // round per-thread block size to iteration block size
+            blockParams.SetBlockSize(Min<int>(this->GetSize(), CeilDiv<int>(blockParams.GetBlockSize(), blockSize) * blockSize));
+            localExecutor->ExecRangeWithThrow(
+                [blockCallable = std::move(blockCallable), blockParams, blockSize, this] (int blockId) {
+                    const int blockFirstId = blockParams.FirstId + blockId * blockParams.GetBlockSize();
+                    const int blockLastId = Min(blockParams.LastId, blockFirstId + blockParams.GetBlockSize());
+                    ForEachBlockRange(this->GetBlockIterator(blockFirstId), blockFirstId, blockLastId, blockCallable, blockSize);
+                }, 0, blockParams.GetBlockCount(), OMPNPar::TLocalExecutor::WAIT_COMPLETE
+            );
+        }
         ui32 CalcChecksum(NPar::TLocalExecutor* localExecutor) const override {
             Y_UNUSED(localExecutor);
             ui32 checkSum = 0;
@@ -286,6 +304,20 @@ namespace NCB {
         THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
             const TCloningParams& cloningParams,
             NPar::TLocalExecutor* localExecutor
+        ) const override {
+            Y_UNUSED(localExecutor);
+            CB_ENSURE_INTERNAL(
+                !cloningParams.MakeConsecutive,
+                "Consecutive cloning of TPolymorphicArrayValuesHolder unimplemented"
+            );
+            return MakeHolder<TPolymorphicArrayValuesHolder>(
+                this->GetId(),
+                Data->CloneWithNewSubsetIndexing(cloningParams.SubsetIndexing)
+            );
+        }
+        THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
+            const TCloningParams& cloningParams,
+            OMPNPar::TLocalExecutor* localExecutor
         ) const override {
             Y_UNUSED(localExecutor);
             CB_ENSURE_INTERNAL(
@@ -380,6 +412,66 @@ namespace NCB {
         THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
             const TCloningParams& cloningParams,
             NPar::TLocalExecutor* localExecutor
+        ) const override {
+            if (!cloningParams.MakeConsecutive) {
+                return MakeHolder<TCompressedValuesHolderImpl>(
+                    TBase::GetId(),
+                    SrcData,
+                    cloningParams.SubsetIndexing
+                );
+            } else {
+                const ui32 objectCount = this->GetSize();
+                const ui32 bitsPerKey = this->GetBitsPerKey();
+                TIndexHelper<ui64> indexHelper(bitsPerKey);
+                const ui32 dstStorageSize = indexHelper.CompressedSize(objectCount);
+
+                TVector<ui64> storage;
+                storage.yresize(dstStorageSize);
+
+                if (bitsPerKey == 8) {
+                    auto dstBuffer = (ui8*)(storage.data());
+
+                    GetArrayData<ui8>().ParallelForEach(
+                        [dstBuffer](ui32 idx, ui8 value) {
+                            dstBuffer[idx] = value;
+                        },
+                        localExecutor
+                    );
+                } else if (bitsPerKey == 16) {
+                    auto dstBuffer = (ui16*)(storage.data());
+
+                    GetArrayData<ui16>().ParallelForEach(
+                        [dstBuffer](ui32 idx, ui16 value) {
+                            dstBuffer[idx] = value;
+                        },
+                        localExecutor
+                    );
+                } else {
+                    auto dstBuffer = (ui32*)(storage.data());
+
+                    GetArrayData<ui32>().ParallelForEach(
+                        [dstBuffer](ui32 idx, ui32 value) {
+                            dstBuffer[idx] = value;
+                        },
+                        localExecutor
+                    );
+                }
+
+                return MakeHolder<TCompressedValuesHolderImpl>(
+                    this->GetId(),
+                    TCompressedArray(
+                        objectCount,
+                        bitsPerKey,
+                        TMaybeOwningArrayHolder<ui64>::CreateOwning(std::move(storage))
+                    ),
+                    cloningParams.SubsetIndexing
+                );
+            }
+        }
+
+        THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
+            const TCloningParams& cloningParams,
+            OMPNPar::TLocalExecutor* localExecutor
         ) const override {
             if (!cloningParams.MakeConsecutive) {
                 return MakeHolder<TCompressedValuesHolderImpl>(

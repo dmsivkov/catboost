@@ -76,6 +76,17 @@ namespace {
             return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
         }
         TMetricHolder Eval(
+            const TVector<TVector<double>>& approx,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
+        ) const override {
+            return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
+        }
+        TMetricHolder Eval(
             const TConstArrayRef<TConstArrayRef<double>> approx,
             const TConstArrayRef<TConstArrayRef<double>> approxDelta,
             bool isExpApprox,
@@ -85,6 +96,27 @@ namespace {
             int begin,
             int end,
             NPar::TLocalExecutor& executor
+        ) const override {
+            const auto evalMetric = [&](int from, int to) {
+                return Eval(approx, approxDelta, isExpApprox, target, weight, queriesInfo, from, to, Nothing());
+            };
+
+            if (IsAdditiveMetric()) {
+                return ParallelEvalMetric(evalMetric, GetMinBlockSize(end - begin), begin, end, executor);
+            } else {
+                return evalMetric(begin, end);
+            }
+        }
+        TMetricHolder Eval(
+            const TConstArrayRef<TConstArrayRef<double>> approx,
+            const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+            bool isExpApprox,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
         ) const override {
             const auto evalMetric = [&](int from, int to) {
                 return Eval(approx, approxDelta, isExpApprox, target, weight, queriesInfo, from, to, Nothing());
@@ -1022,6 +1054,7 @@ double TWKappaMetric::GetFinalError(const TMetricHolder& error) const {
     return CalcKappa(error, ClassCount, EKappaMetricType::Weighted);
 }
 
+template <typename LocalExecutorType>
 TVector<TMetricHolder> EvalErrorsWithCaching(
     const TVector<TVector<double>>& approx,
     const TVector<TVector<double>>& approxDelta,
@@ -1030,7 +1063,7 @@ TVector<TMetricHolder> EvalErrorsWithCaching(
     TConstArrayRef<float> weight,
     TConstArrayRef<TQueryInfo> queriesInfo,
     TConstArrayRef<const IMetric*> metrics,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     const auto threadCount = localExecutor->GetThreadCount() + 1;
     const auto objectCount = approx.front().size();
@@ -1058,13 +1091,13 @@ TVector<TMetricHolder> EvalErrorsWithCaching(
     TVector<TMetricHolder> errors;
     errors.reserve(metrics.size());
 
-    NPar::TLocalExecutor::TExecRangeParams objectwiseBlockParams(0, objectCount);
+    typename LocalExecutorType::TExecRangeParams objectwiseBlockParams(0, objectCount);
     if (!target.empty()) {
         const auto objectwiseEffectiveBlockCount = Min(threadCount, int(ceil(double(objectCount) / GetMinBlockSize(objectCount))));
         objectwiseBlockParams.SetBlockCount(objectwiseEffectiveBlockCount);
     }
 
-    NPar::TLocalExecutor::TExecRangeParams querywiseBlockParams(0, queryCount);
+    typename LocalExecutorType::TExecRangeParams querywiseBlockParams(0, queryCount);
     if (!queriesInfo.empty()) {
         const auto querywiseEffectiveBlockCount = Min(threadCount, int(ceil(double(queryCount) / GetMinBlockSize(objectCount))));
         querywiseBlockParams.SetBlockCount(querywiseEffectiveBlockCount);
@@ -1091,7 +1124,7 @@ TVector<TMetricHolder> EvalErrorsWithCaching(
             auto &cache = isObjectwise ? objectwiseAdditiveCache : querywiseAdditiveCache;
             const auto end = isObjectwise ? objectCount : queryCount;
 
-            NPar::ParallelFor(*localExecutor, 0, blockCount, [&](auto blockId) {
+            common::ParallelFor(*localExecutor, 0, blockCount, [&](auto blockId) {
                 const auto from = blockId * blockSize;
                 const auto to = Min<int>((blockId + 1) * blockSize, end);
                 results[blockId] = calcCaching(cachingMetric, from, to, &cache[blockId]);
@@ -1116,6 +1149,28 @@ TVector<TMetricHolder> EvalErrorsWithCaching(
 
     return errors;
 }
+template
+TVector<TMetricHolder> EvalErrorsWithCaching<NPar::TLocalExecutor>(
+    const TVector<TVector<double>>& approx,
+    const TVector<TVector<double>>& approxDelta,
+    bool isExpApprox,
+    TConstArrayRef<TConstArrayRef<float>> target,
+    TConstArrayRef<float> weight,
+    TConstArrayRef<TQueryInfo> queriesInfo,
+    TConstArrayRef<const IMetric*> metrics,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+TVector<TMetricHolder> EvalErrorsWithCaching<OMPNPar::TLocalExecutor>(
+    const TVector<TVector<double>>& approx,
+    const TVector<TVector<double>>& approxDelta,
+    bool isExpApprox,
+    TConstArrayRef<TConstArrayRef<float>> target,
+    TConstArrayRef<float> weight,
+    TConstArrayRef<TQueryInfo> queriesInfo,
+    TConstArrayRef<const IMetric*> metrics,
+    OMPNPar::TLocalExecutor* localExecutor
+);
 
 template <typename TMetricType>
 static TVector<THolder<IMetric>> CreateMetric(int approxDimension, const TMetricConfig& config) {

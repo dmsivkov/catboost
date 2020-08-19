@@ -57,24 +57,25 @@ static void UpdateLearningFold(
         UpdateBodyTailApprox</*StoreExpApprox*/true>(
             approxDelta,
             ctx->Params.BoostingOptions->LearningRate,
-            ctx->LocalExecutor,
+            ctx->OMPLocalExecutor,
             fold
         );
     } else {
         UpdateBodyTailApprox</*StoreExpApprox*/false>(
             approxDelta,
             ctx->Params.BoostingOptions->LearningRate,
-            ctx->LocalExecutor,
+            ctx->OMPLocalExecutor,
             fold
         );
     }
 }
 
+template <typename LocalExecutorType>
 static void ScaleAllApproxes(
     const double approxMultiplier,
     const bool storeExpApprox,
     TLearnProgress* learnProgress,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     TVector<TVector<TVector<double>>*> allApproxes;
     for (auto& fold : learnProgress->Folds) {
@@ -89,7 +90,7 @@ static void ScaleAllApproxes(
         allApproxes.push_back(&testApprox);
     }
 
-    NPar::ParallelFor(
+    common::ParallelFor(
         *localExecutor,
         0,
         allApproxes.size(),
@@ -131,7 +132,7 @@ void CalcApproxesLeafwise(
         tree,
         data,
         EBuildIndicesDataParts::All,
-        ctx->LocalExecutor
+        ctx->OMPLocalExecutor
     );
     auto statistics = BuildSubset(
         *indices,
@@ -151,7 +152,7 @@ void CalcApproxesLeafwise(
             ctx->Params,
             &(statistics[leafIdx]),
             &ctx->LearnProgress->Rand,
-            ctx->LocalExecutor,
+            ctx->OMPLocalExecutor,
             weightedDers
         );
     }
@@ -192,7 +193,7 @@ void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* c
                 modelShrinkage,
                 error->GetIsExpApprox(),
                 ctx->LearnProgress.Get(),
-                ctx->LocalExecutor
+                ctx->OMPLocalExecutor
             );
             if (ctx->LearnProgress->StartingApprox.Defined()) {
                 *ctx->LearnProgress->StartingApprox = *ctx->LearnProgress->StartingApprox.Get() * modelShrinkage;
@@ -211,7 +212,7 @@ void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* c
             ctx->LearnProgress->Rand.GenRand()
         );
         if (ctx->Params.SystemOptions->IsSingleHost()) {
-            ctx->LocalExecutor->ExecRangeWithThrow(
+            ctx->OMPLocalExecutor->ExecRangeWithThrow(
                 [&](int bodyTailId) {
                     CalcWeightedDerivatives(
                         *error,
@@ -219,7 +220,7 @@ void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* c
                         ctx->Params,
                         randomSeeds[bodyTailId],
                         takenFold,
-                        ctx->LocalExecutor
+                        ctx->OMPLocalExecutor
                     );
                 },
                 0,
@@ -283,7 +284,7 @@ void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* c
                 seenProjections.insert(proj);
             }
 
-            ctx->LocalExecutor->ExecRange(
+            ctx->OMPLocalExecutor->ExecRange(
                 [&](int taskId){
                     parallelJobsData[taskId].DoTask(ctx);
                 },
@@ -376,7 +377,7 @@ void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* c
                 treeValues,
                 data.Test,
                 ctx->LearnProgress.Get(),
-                ctx->LocalExecutor
+                ctx->OMPLocalExecutor
             );
         } else {
             const bool isMultiRegression = dynamic_cast<const TMultiDerCalcer*>(error.Get()) != nullptr;

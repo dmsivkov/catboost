@@ -10,7 +10,9 @@
 namespace NPar {
     class TLocalExecutor;
 }
-
+namespace OMPNPar {
+    class TLocalExecutor;
+}
 
 TVector<double> CalculatePairwiseLeafValues(
     const TArray2D<double>& pairwiseWeightSums,
@@ -19,11 +21,12 @@ TVector<double> CalculatePairwiseLeafValues(
     float pairwiseBucketWeightPriorReg
 );
 
+template <typename LocalExecutorType>
 TArray2D<double> ComputePairwiseWeightSums(
     const TVector<TQueryInfo>& queriesInfo,
     int leafCount,
     int querycount,
     const TVector<TIndexType>& indices,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 );
 

@@ -10,7 +10,6 @@
 #include <util/generic/vector.h>
 #include <util/generic/xrange.h>
 
-
 static int GetBlockSize(
     bool isObjectwise,
     TConstArrayRef<TQueryInfo> queriesInfo,
@@ -44,6 +43,7 @@ static int GetNextIdx(
     return idx;
 }
 
+template <typename LocalExecutorType>
 TMetricHolder EvalErrorsWithLeaves(
     const TConstArrayRef<TConstArrayRef<double>> approx,
     const TConstArrayRef<TConstArrayRef<double>> leafDelta,
@@ -53,7 +53,7 @@ TMetricHolder EvalErrorsWithLeaves(
     TConstArrayRef<float> weight,
     TConstArrayRef<TQueryInfo> queriesInfo,
     const IMetric& error,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     CB_ENSURE(error.IsAdditiveMetric(), "EvalErrorsWithLeaves is not implemented for non-additive metric " + error.GetDescription());
 
@@ -67,7 +67,7 @@ TMetricHolder EvalErrorsWithLeaves(
         }
     }
 
-    NPar::TLocalExecutor sequentialExecutor;
+    LocalExecutorType sequentialExecutor;
     const auto evalMetric = [&] (int from, int to) { // objects or queries
         TVector<TConstArrayRef<double>> approxBlock(approxDimension, TArrayRef<double>{});
 
@@ -142,3 +142,29 @@ TMetricHolder EvalErrorsWithLeaves(
 
     return ParallelEvalMetric(evalMetric, GetMinBlockSize(end - begin), begin, end, *localExecutor);
 }
+
+template
+TMetricHolder EvalErrorsWithLeaves<NPar::TLocalExecutor>(
+    const TConstArrayRef<TConstArrayRef<double>> approx,
+    const TConstArrayRef<TConstArrayRef<double>> leafDelta,
+    TConstArrayRef<TIndexType> indices,
+    bool isExpApprox,
+    TConstArrayRef<float> target,
+    TConstArrayRef<float> weight,
+    TConstArrayRef<TQueryInfo> queriesInfo,
+    const IMetric& error,
+    NPar::TLocalExecutor* localExecutor
+);
+
+template
+TMetricHolder EvalErrorsWithLeaves<OMPNPar::TLocalExecutor>(
+    const TConstArrayRef<TConstArrayRef<double>> approx,
+    const TConstArrayRef<TConstArrayRef<double>> leafDelta,
+    TConstArrayRef<TIndexType> indices,
+    bool isExpApprox,
+    TConstArrayRef<float> target,
+    TConstArrayRef<float> weight,
+    TConstArrayRef<TQueryInfo> queriesInfo,
+    const IMetric& error,
+    OMPNPar::TLocalExecutor* localExecutor
+);

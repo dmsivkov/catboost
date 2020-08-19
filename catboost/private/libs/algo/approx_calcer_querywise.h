@@ -16,7 +16,7 @@ namespace NPar {
     class TLocalExecutor;
 }
 
-
+template <typename LocalExecutorType>
 void CalculateDersForQueries(
     const TVector<double>& approxes,
     const TVector<double>& approxesDelta,
@@ -28,9 +28,10 @@ void CalculateDersForQueries(
     int queryEndIndex,
     TArrayRef<TDers> approxDers,
     ui64 randomSeed,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 );
 
+template <typename LocalExecutorType>
 void AddLeafDersForQueries(
     const TVector<TDers>& weightedDers,
     const TVector<TIndexType>& indices,
@@ -41,5 +42,5 @@ void AddLeafDersForQueries(
     ELeavesEstimation estimationMethod,
     int iteration,
     TVector<TSum>* buckets,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 );

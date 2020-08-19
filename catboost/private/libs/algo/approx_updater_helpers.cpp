@@ -8,14 +8,14 @@
 using namespace NCB;
 
 
-template <bool StoreExpApprox>
+template <bool StoreExpApprox, typename LocalExecutorType>
 static void UpdateAvrgApprox(
     ui32 learnSampleCount,
     const TVector<TIndexType>& indices,
     const TVector<TVector<double>>& treeDelta,
     TConstArrayRef<TTrainingDataProviderPtr> testData, // can be empty
     TLearnProgress* learnProgress,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     Y_ASSERT(learnProgress->AveragingFold.BodyTailArr.ysize() == 1);
     const TVector<size_t>& testOffsets = CalcTestOffsets(learnSampleCount, testData);
@@ -69,9 +69,10 @@ static void UpdateAvrgApprox(
         },
         0,
         1 + SafeIntegerCast<int>(testData.size()),
-        NPar::TLocalExecutor::WAIT_COMPLETE);
+        LocalExecutorType::WAIT_COMPLETE);
 }
 
+template <typename LocalExecutorType>
 void UpdateAvrgApprox(
     bool storeExpApprox,
     ui32 learnSampleCount,
@@ -79,7 +80,7 @@ void UpdateAvrgApprox(
     const TVector<TVector<double>>& treeDelta,
     TConstArrayRef<TTrainingDataProviderPtr> testData, // can be empty
     TLearnProgress* learnProgress,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     if (storeExpApprox) {
         ::UpdateAvrgApprox<true>(learnSampleCount, indices, treeDelta, testData, learnProgress, localExecutor);
@@ -87,3 +88,24 @@ void UpdateAvrgApprox(
         ::UpdateAvrgApprox<false>(learnSampleCount, indices, treeDelta, testData, learnProgress, localExecutor);
     }
 }
+
+template
+void UpdateAvrgApprox<NPar::TLocalExecutor>(
+    bool storeExpApprox,
+    ui32 learnSampleCount,
+    const TVector<TIndexType>& indices,
+    const TVector<TVector<double>>& treeDelta,
+    TConstArrayRef<TTrainingDataProviderPtr> testData, // can be empty
+    TLearnProgress* learnProgress,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+void UpdateAvrgApprox<OMPNPar::TLocalExecutor>(
+    bool storeExpApprox,
+    ui32 learnSampleCount,
+    const TVector<TIndexType>& indices,
+    const TVector<TVector<double>>& treeDelta,
+    TConstArrayRef<TTrainingDataProviderPtr> testData, // can be empty
+    TLearnProgress* learnProgress,
+    OMPNPar::TLocalExecutor* localExecutor
+);

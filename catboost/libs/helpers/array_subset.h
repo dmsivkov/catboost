@@ -488,10 +488,10 @@ namespace NCB {
          * if approximateBlockSize is undefined divide data approximately evenly between localExecutor
          * threads
          */
-        template <class F>
+        template <class F, typename LocalExecutorType>
         void ParallelForEach(
             F&& f,
-            NPar::TLocalExecutor* localExecutor,
+            LocalExecutorType* localExecutor,
             TMaybe<TSize> approximateBlockSize = Nothing()
         ) const {
             if (!Size()) {
@@ -961,11 +961,40 @@ namespace NCB {
                 approximateBlockSize
             );
         };
+        template <class F>
+        void ParallelForEach(
+            F&& f,
+            OMPNPar::TLocalExecutor* localExecutor,
+            TMaybe<TSize> approximateBlockSize = Nothing()
+        ) {
+            SubsetIndexing->ParallelForEach(
+                [src = this->Src, f = std::move(f)](TSize index, TSize srcIndex) {
+                    f(index, (*src)[srcIndex]);
+                },
+                localExecutor,
+                approximateBlockSize
+            );
+        };
 
         template <class F>
         void ParallelForEach(
             F&& f,
             NPar::TLocalExecutor* localExecutor,
+            TMaybe<TSize> approximateBlockSize = Nothing()
+        ) const {
+            SubsetIndexing->ParallelForEach(
+                [src = this->Src, f = std::move(f)](TSize index, TSize srcIndex) {
+                    f(index, (*(const TArrayLike*)src)[srcIndex]);
+                },
+                localExecutor,
+                approximateBlockSize
+            );
+        };
+
+        template <class F>
+        void ParallelForEach(
+            F&& f,
+            OMPNPar::TLocalExecutor* localExecutor,
             TMaybe<TSize> approximateBlockSize = Nothing()
         ) const {
             SubsetIndexing->ParallelForEach(

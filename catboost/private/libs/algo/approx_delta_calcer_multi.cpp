@@ -56,7 +56,7 @@ void CalcApproxDeltaMulti(
             bt.BodyFinish,
             recalcLeafWeights,
             estimationMethod,
-            ctx->LocalExecutor,
+            ctx->OMPLocalExecutor,
             &leafDers
         );
         AddLangevinNoiseToLeafDerivativesSum(
@@ -86,7 +86,7 @@ void CalcApproxDeltaMulti(
             bt.BodyFinish,
             leafDeltas,
             approxDeltas,
-            ctx->LocalExecutor
+            ctx->OMPLocalExecutor
         );
         TVector<double> curApprox(approxDimension);
         TVector<double> curDelta(approxDimension);
@@ -150,13 +150,13 @@ void CalcApproxDeltaMulti(
             fold.GetLearnWeights(),
             bodyTailQueryInfo,
             *lossFunction[0],
-            ctx->LocalExecutor
+            ctx->OMPLocalExecutor
         );
         return minimizationSign * lossFunction[0]->GetFinalError(additiveStats);
     };
 
     const auto approxCopyFunc = [ctx] (const TVector<TVector<double>>& src, TVector<TVector<double>>* dst) {
-        CopyApprox(src, dst, ctx->LocalExecutor);
+        CopyApprox(src, dst, ctx->OMPLocalExecutor);
     };
 
     GradientWalker</*IsLeafwise*/ false>(

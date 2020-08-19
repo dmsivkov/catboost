@@ -392,7 +392,7 @@ inline static void FixUpStats(
 }
 
 
-template <typename TFullIndexType, typename TIsCaching>
+template <typename TFullIndexType, typename TIsCaching, typename LocalExecutorType>
 static void CalcStatsImpl(
     const TCalcScoreFold& fold,
     const TQuantizedForCPUObjectsDataProvider& objectsDataProvider,
@@ -405,7 +405,7 @@ static void CalcStatsImpl(
     ui32 oneHotMaxSize,
     int depth,
     int /*splitStatsCount*/,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TPairwiseStats* stats
 ) {
     const int approxDimension = fold.GetApproxDimension();
@@ -542,7 +542,7 @@ static void CalcStatsImpl(
 }
 
 
-template <typename TFullIndexType, typename TIsCaching>
+template <typename TFullIndexType, typename TIsCaching, typename LocalExecutorType>
 static void CalcStatsImpl(
     const TCalcScoreFold& fold,
     const TQuantizedForCPUObjectsDataProvider& objectsDataProvider,
@@ -555,7 +555,7 @@ static void CalcStatsImpl(
     ui32 /*oneHotMaxSize*/,
     int depth,
     int splitStatsCount,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TBucketStatsRefOptionalHolder* stats
 ) {
     Y_ASSERT(!isCaching || depth > 0);
@@ -863,7 +863,7 @@ static void CalculateNonPairwiseScore(
     }
 }
 
-
+template <typename LocalExecutorType>
 void CalcStatsAndScores(
     const TQuantizedForCPUObjectsDataProvider& objectsDataProvider,
     const std::tuple<const TOnlineCTRHash&, const TOnlineCTRHash&>& allCtrs,
@@ -877,7 +877,7 @@ void CalcStatsAndScores(
     bool useTreeLevelCaching,
     const TVector<int>& currTreeMonotonicConstraints,
     const TMap<ui32, int>& monotonicConstraints,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TBucketStatsCache* statsFromPrevTree,
     TStats3D* stats3d,
     TPairwiseStats* pairwiseStats,
@@ -1106,6 +1106,47 @@ void CalcStatsAndScores(
         }
     }
 }
+
+template
+void CalcStatsAndScores<NPar::TLocalExecutor>(
+    const TQuantizedForCPUObjectsDataProvider& objectsDataProvider,
+    const std::tuple<const TOnlineCTRHash&, const TOnlineCTRHash&>& allCtrs,
+    const TCalcScoreFold& fold,
+    const TCalcScoreFold& prevLevelData,
+    const TFold* initialFold,
+    const TFlatPairsInfo& pairs,
+    const NCatboostOptions::TCatBoostOptions& fitParams,
+    const TCandidateInfo& candidateInfo,
+    int depth,
+    bool useTreeLevelCaching,
+    const TVector<int>& currTreeMonotonicConstraints,
+    const TMap<ui32, int>& monotonicConstraints,
+    NPar::TLocalExecutor* localExecutor,
+    TBucketStatsCache* statsFromPrevTree,
+    TStats3D* stats3d,
+    TPairwiseStats* pairwiseStats,
+    IScoreCalcer* scoreCalcer
+);
+template
+void CalcStatsAndScores<OMPNPar::TLocalExecutor>(
+    const TQuantizedForCPUObjectsDataProvider& objectsDataProvider,
+    const std::tuple<const TOnlineCTRHash&, const TOnlineCTRHash&>& allCtrs,
+    const TCalcScoreFold& fold,
+    const TCalcScoreFold& prevLevelData,
+    const TFold* initialFold,
+    const TFlatPairsInfo& pairs,
+    const NCatboostOptions::TCatBoostOptions& fitParams,
+    const TCandidateInfo& candidateInfo,
+    int depth,
+    bool useTreeLevelCaching,
+    const TVector<int>& currTreeMonotonicConstraints,
+    const TMap<ui32, int>& monotonicConstraints,
+    OMPNPar::TLocalExecutor* localExecutor,
+    TBucketStatsCache* statsFromPrevTree,
+    TStats3D* stats3d,
+    TPairwiseStats* pairwiseStats,
+    IScoreCalcer* scoreCalcer
+);
 
 TVector<double> GetScores(
     const TStats3D& stats3d,

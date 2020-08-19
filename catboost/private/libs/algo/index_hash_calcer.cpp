@@ -8,10 +8,11 @@
 
 using namespace NCB;
 
+template <typename LocalExecutorType>
 struct TCtrCalcerParams {
     const int IteratorBlockSize = 4096;
 
-    TCtrCalcerParams(size_t sampleCount, ui64* hashArrayPtr, NPar::TLocalExecutor* localExecutor)
+    TCtrCalcerParams(size_t sampleCount, ui64* hashArrayPtr, LocalExecutorType* localExecutor)
         : BlockExecutionParams(0, sampleCount)
         , HashArrayPtr(hashArrayPtr)
         , LocalExecutor(localExecutor)
@@ -28,9 +29,9 @@ struct TCtrCalcerParams {
 
     TVector<THolder<IFeatureValuesHolder>> PermutedFeatureColumns;
     TVector<std::function<void(TArrayRef<ui64>, IDynamicBlockIteratorBase*)>> PerIteratorCallbacks;
-    NPar::TLocalExecutor::TExecRangeParams BlockExecutionParams;
+    typename LocalExecutorType::TExecRangeParams BlockExecutionParams;
     ui64* HashArrayPtr;
-    NPar::TLocalExecutor* LocalExecutor;
+    LocalExecutorType* LocalExecutor;
 
     void ThreadFunc(int threadId) {
         const int blockFirstId = BlockExecutionParams.FirstId + threadId * BlockExecutionParams.GetBlockSize();
@@ -62,11 +63,14 @@ struct TCtrCalcerParams {
                 this->ThreadFunc(threadId);
             },
             0, BlockExecutionParams.GetBlockCount(),
-            NPar::TLocalExecutor::WAIT_COMPLETE
+            LocalExecutorType::WAIT_COMPLETE
         );
     }
 };
+template struct TCtrCalcerParams<NPar::TLocalExecutor>;
+template struct TCtrCalcerParams<OMPNPar::TLocalExecutor>;
 
+template <typename LocalExecutorType>
 void CalcHashes(
     const TProjection& proj,
     const TQuantizedForCPUObjectsDataProvider& objectsDataProvider,
@@ -74,7 +78,7 @@ void CalcHashes(
     const TPerfectHashedToHashedCatValuesMap* perfectHashedToHashedCatValuesMap,
     ui64* begin,
     ui64* end,
-    NPar::TLocalExecutor* localExecutor) {
+    LocalExecutorType* localExecutor) {
 
     const size_t sampleCount = end - begin;
     Y_VERIFY((size_t)featuresSubsetIndexing.Size() == sampleCount);
@@ -166,6 +170,24 @@ void CalcHashes(
     ctrCalcerParams.Run();
 }
 
+template
+void CalcHashes<NPar::TLocalExecutor>(
+    const TProjection& proj,
+    const TQuantizedForCPUObjectsDataProvider& objectsDataProvider,
+    const TFeaturesArraySubsetIndexing& featuresSubsetIndexing,
+    const TPerfectHashedToHashedCatValuesMap* perfectHashedToHashedCatValuesMap,
+    ui64* begin,
+    ui64* end,
+    NPar::TLocalExecutor* localExecutor);
+template
+void CalcHashes<OMPNPar::TLocalExecutor>(
+    const TProjection& proj,
+    const TQuantizedForCPUObjectsDataProvider& objectsDataProvider,
+    const TFeaturesArraySubsetIndexing& featuresSubsetIndexing,
+    const TPerfectHashedToHashedCatValuesMap* perfectHashedToHashedCatValuesMap,
+    ui64* begin,
+    ui64* end,
+    OMPNPar::TLocalExecutor* localExecutor);
 
 /// Compute reindexHash and reindex hash values in range [begin,end).
 size_t ComputeReindexHash(ui64 topSize, TDenseHash<ui64, ui32>* reindexHashPtr, ui64* begin, ui64* end) {

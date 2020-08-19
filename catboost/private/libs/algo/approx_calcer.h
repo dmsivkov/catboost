@@ -20,16 +20,17 @@ namespace NPar {
     class TLocalExecutor;
 }
 
-
+template <typename LocalExecutorType>
 void UpdateApproxDeltas(
     bool storeExpApprox,
     const TVector<TIndexType>& indices,
     int docCount,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TVector<double>* leafDeltas,
     TVector<double>* deltasDimension
 );
 
+template <typename LocalExecutorType>
 void CalcLeafDersSimple(
     const TVector<TIndexType>& indices,
     const TFold& fold,
@@ -43,7 +44,7 @@ void CalcLeafDersSimple(
     ELeavesEstimation estimationMethod,
     const NCatboostOptions::TCatBoostOptions& params,
     ui64 randomSeed,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TVector<TSum>* leafDers,
     TArray2D<double>* pairwiseBuckets,
     TVector<TDers>* scratchDers

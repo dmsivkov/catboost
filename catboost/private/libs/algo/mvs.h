@@ -14,7 +14,9 @@ struct TRestorableFastRng64;
 namespace NPar {
     class TLocalExecutor;
 }
-
+namespace OMPNPar {
+    class TLocalExecutor;
+}
 
 class TMvsSampler {
 public:
@@ -23,18 +25,20 @@ public:
         , SampleRate(sampleRate)
         , Lambda(lambda)
     {}
+    template<typename LocalExecutorType>
     void GenSampleWeights(
         EBoostingType boostingType,
         const TVector<TVector<TVector<double>>>& leafValues,
         TRestorableFastRng64* rand,
-        NPar::TLocalExecutor* localExecutor,
+        LocalExecutorType* localExecutor,
         TFold* fold) const;
 
 private:
+    template<typename LocalExecutorType>
     double GetLambda(
         const TVector<TConstArrayRef<double>>& derivatives,
         const TVector<TVector<TVector<double>>>& leafValues,
-        NPar::TLocalExecutor* localExecutor) const;
+        LocalExecutorType* localExecutor) const;
     double CalculateThreshold(
         TVector<double>::iterator candidatesBegin,
         TVector<double>::iterator candidatesEnd,

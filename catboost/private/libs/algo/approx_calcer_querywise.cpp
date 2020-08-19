@@ -4,10 +4,11 @@
 #include <catboost/private/libs/index_range/index_range.h>
 
 #include <library/cpp/threading/local_executor/local_executor.h>
+#include <library/cpp/threading/local_executor/omp_local_executor.h>
 
 #include <util/generic/cast.h>
 
-
+template <typename LocalExecutorType>
 void CalculateDersForQueries(
     const TVector<double>& approxes,
     const TVector<double>& approxesDelta,
@@ -19,13 +20,13 @@ void CalculateDersForQueries(
     int queryEndIndex,
     TArrayRef<TDers> approxDers,
     ui64 randomSeed,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     if (!approxesDelta.empty()) {
         TVector<double> fullApproxes;
         fullApproxes.yresize(approxes.ysize());
         if (error.GetIsExpApprox()) {
-            NPar::ParallelFor(
+            common::ParallelFor(
                 *localExecutor,
                 queriesInfo[queryStartIndex].Begin,
                 queriesInfo[queryEndIndex - 1].End,
@@ -36,7 +37,7 @@ void CalculateDersForQueries(
                     );
                 });
         } else {
-            NPar::ParallelFor(
+            common::ParallelFor(
                 *localExecutor,
                 queriesInfo[queryStartIndex].Begin,
                 queriesInfo[queryEndIndex - 1].End,
@@ -72,6 +73,35 @@ void CalculateDersForQueries(
         );
     }
 }
+template
+void CalculateDersForQueries<NPar::TLocalExecutor>(
+    const TVector<double>& approxes,
+    const TVector<double>& approxesDelta,
+    const TVector<float>& targets,
+    const TVector<float>& weights,
+    const TVector<TQueryInfo>& queriesInfo,
+    const IDerCalcer& error,
+    int queryStartIndex,
+    int queryEndIndex,
+    TArrayRef<TDers> approxDers,
+    ui64 randomSeed,
+    NPar::TLocalExecutor* localExecutor
+);
+
+template
+void CalculateDersForQueries<OMPNPar::TLocalExecutor>(
+    const TVector<double>& approxes,
+    const TVector<double>& approxesDelta,
+    const TVector<float>& targets,
+    const TVector<float>& weights,
+    const TVector<TQueryInfo>& queriesInfo,
+    const IDerCalcer& error,
+    int queryStartIndex,
+    int queryEndIndex,
+    TArrayRef<TDers> approxDers,
+    ui64 randomSeed,
+    OMPNPar::TLocalExecutor* localExecutor
+);
 
 template <ELeavesEstimation estimationMethod>
 static void AddMethodDersForLeaves(
@@ -93,6 +123,7 @@ static void AddMethodDersForLeaves(
     }
 }
 
+template <typename LocalExecutorType>
 void AddLeafDersForQueries(
     const TVector<TDers>& weightedDers,
     const TVector<TIndexType>& indices,
@@ -103,7 +134,7 @@ void AddLeafDersForQueries(
     ELeavesEstimation estimationMethod,
     int recalcLeafWeights,
     TVector<TSum>* buckets,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     const int leafCount = buckets->ysize();
 
@@ -160,3 +191,29 @@ void AddLeafDersForQueries(
     }
 }
 
+template
+void AddLeafDersForQueries<NPar::TLocalExecutor>(
+    const TVector<TDers>& weightedDers,
+    const TVector<TIndexType>& indices,
+    const TVector<float>& weights,
+    const TVector<TQueryInfo>& queriesInfo,
+    int queryStartIndex,
+    int queryEndIndex,
+    ELeavesEstimation estimationMethod,
+    int recalcLeafWeights,
+    TVector<TSum>* buckets,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+void AddLeafDersForQueries<OMPNPar::TLocalExecutor>(
+    const TVector<TDers>& weightedDers,
+    const TVector<TIndexType>& indices,
+    const TVector<float>& weights,
+    const TVector<TQueryInfo>& queriesInfo,
+    int queryStartIndex,
+    int queryEndIndex,
+    ELeavesEstimation estimationMethod,
+    int recalcLeafWeights,
+    TVector<TSum>* buckets,
+    OMPNPar::TLocalExecutor* localExecutor
+);

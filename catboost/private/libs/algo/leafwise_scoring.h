@@ -7,7 +7,7 @@
 #include <catboost/libs/data/objects.h>
 #include <catboost/private/libs/algo_helpers/scoring_helpers.h>
 #include <catboost/private/libs/data_types/pair.h>
-
+#include <library/cpp/threading/local_executor/omp_local_executor.h>
 
 class TCalcScoreFold;
 class TFold;

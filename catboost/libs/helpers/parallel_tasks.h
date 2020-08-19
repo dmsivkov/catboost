@@ -4,6 +4,7 @@
 
 #include <library/cpp/dot_product/dot_product.h>
 #include <library/cpp/threading/local_executor/local_executor.h>
+#include <library/cpp/threading/local_executor/omp_local_executor.h>
 
 #include <util/generic/array_ref.h>
 #include <util/generic/cast.h>
@@ -12,20 +13,34 @@
 
 #include <functional>
 
+namespace common {
+
+template <typename TBody>
+inline void ParallelFor(NPar::TLocalExecutor& executor, ui32 from, ui32 to, TBody&& body) {
+    NPar::ParallelFor(executor, from, to, std::forward<TBody>(body));
+}
+
+template <typename TBody>
+inline void ParallelFor(OMPNPar::TLocalExecutor& executor, ui32 from, ui32 to, TBody&& body) {
+    OMPNPar::ParallelFor(executor, from, to, std::forward<TBody>(body));
+}
+
+}
 
 namespace NCB {
 
     // tasks is not const because elements of tasks are cleared after execution
-    void ExecuteTasksInParallel(TVector<std::function<void()>>* tasks, NPar::TLocalExecutor* localExecutor);
+    template <typename LocalExecutorType>
+    void ExecuteTasksInParallel(TVector<std::function<void()>>* tasks, LocalExecutorType* localExecutor);
 
-    template <class T>
+    template <class T, typename LocalExecutorType>
     void ParallelFill(
         const T& fillValue,
         TMaybe<int> blockSize,
-        NPar::TLocalExecutor* localExecutor,
+        LocalExecutorType* localExecutor,
         TArrayRef<T> array) {
 
-        NPar::TLocalExecutor::TExecRangeParams rangeParams(0, SafeIntegerCast<int>(array.size()));
+        typename LocalExecutorType::TExecRangeParams rangeParams(0, SafeIntegerCast<int>(array.size()));
         if (blockSize) {
             rangeParams.SetBlockSize(*blockSize);
         } else {
@@ -35,7 +50,7 @@ namespace NCB {
         localExecutor->ExecRange(
             [=] (int i) { array[i] = fillValue; },
             rangeParams,
-            NPar::TLocalExecutor::WAIT_COMPLETE);
+            LocalExecutorType::WAIT_COMPLETE);
     }
 
     template <typename TNumber>
@@ -65,13 +80,13 @@ namespace NCB {
         return result;
     }
 
-    template <typename TNumber>
+    template <typename TNumber, typename LocalExecutorType>
     inline void FillRank2(
         TNumber value,
         int rowCount,
         int columnCount,
         TVector<TVector<TNumber>>* dst,
-        NPar::TLocalExecutor* localExecutor
+        LocalExecutorType* localExecutor
     ) {
         constexpr int minimumElementCount = 1000;
         dst->resize(rowCount);
@@ -81,7 +96,7 @@ namespace NCB {
                 Fill(dimension.begin(), dimension.end(), value);
             }
         } else if (columnCount < rowCount * minimumElementCount) {
-            NPar::ParallelFor(
+            common::ParallelFor(
                 *localExecutor,
                 0,
                 rowCount,

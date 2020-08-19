@@ -19,7 +19,9 @@ struct TNonSymmetricTreeStructure;
 namespace NPar {
     class TLocalExecutor;
 }
-
+namespace OMPNPar {
+    class TLocalExecutor;
+}
 
 /*
  * for index calculation we need either TFullSubset or TIndexedSubset
@@ -27,7 +29,7 @@ namespace NPar {
  */
 using TIndexedSubsetCache = THashMap<const NCB::TFeaturesArraySubsetIndexing*, NCB::TIndexedSubset<ui32>>;
 
-
+template <typename LocalExecutorType>
 void GetObjectsDataAndIndexing(
     const NCB::TTrainingDataProviders& trainingData,
     const TFold& fold,
@@ -35,18 +37,19 @@ void GetObjectsDataAndIndexing(
     bool isOnline,
     ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
     TIndexedSubsetCache* indexedSubsetCache,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     NCB::TQuantizedObjectsDataProviderPtr* objectsData,
     const ui32** columnIndexing // can return nullptr
 );
 
+template <typename LocalExecutorType>
 void SetPermutedIndices(
     const TSplit& split,
     const NCB::TTrainingDataProviders& trainingData,
     int curDepth,
     const TFold& fold,
     TVector<TIndexType>* indices,
-    NPar::TLocalExecutor* localExecutor);
+    LocalExecutorType* localExecutor);
 
 TVector<bool> GetIsLeafEmpty(int curDepth, const TVector<TIndexType>& indices);
 
@@ -59,13 +62,13 @@ enum class EBuildIndicesDataParts {
     TestOnly
 };
 
-
+template <typename LocalExecutorType>
 TVector<TIndexType> BuildIndices(
     const TFold& fold, // can be empty
     const TVariant<TSplitTree, TNonSymmetricTreeStructure>& tree,
     const NCB::TTrainingDataProviders& trainingData,
     EBuildIndicesDataParts dataParts,
-    NPar::TLocalExecutor* localExecutor);
+    LocalExecutorType* localExecutor);
 
 TVector<TIndexType> BuildIndicesForBinTree(
     const TFullModel& model,

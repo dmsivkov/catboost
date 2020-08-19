@@ -22,6 +22,17 @@ namespace NCB {
             QuantizedFeaturesInfo
         );
     }
+    THolder<IFeatureValuesHolder> TExternalFloatValuesHolder::CloneWithNewSubsetIndexing(
+        const TCloningParams& cloningParams,
+        OMPNPar::TLocalExecutor* localExecutor
+    ) const {
+        Y_UNUSED(localExecutor);
+        return MakeHolder<TExternalFloatValuesHolder>(
+            GetId(),
+            SrcData->CloneWithNewSubsetIndexing(cloningParams.SubsetIndexing),
+            QuantizedFeaturesInfo
+        );
+    }
 
     IDynamicBlockIteratorBasePtr TExternalFloatValuesHolder::GetBlockIterator(ui32 offset) const {
         const auto floatFeatureIdx = QuantizedFeaturesInfo->GetPerTypeFeatureIdx<EFeatureType::Float>(*this);
@@ -62,6 +73,17 @@ namespace NCB {
     THolder<IFeatureValuesHolder> TExternalCatValuesHolder::CloneWithNewSubsetIndexing(
         const TCloningParams& cloningParams,
         NPar::TLocalExecutor* localExecutor
+    ) const {
+        Y_UNUSED(localExecutor);
+        return MakeHolder<TExternalCatValuesHolder>(
+            GetId(),
+            SrcData->CloneWithNewSubsetIndexing(cloningParams.SubsetIndexing),
+            QuantizedFeaturesInfo
+        );
+    }
+    THolder<IFeatureValuesHolder> TExternalCatValuesHolder::CloneWithNewSubsetIndexing(
+        const TCloningParams& cloningParams,
+        OMPNPar::TLocalExecutor* localExecutor
     ) const {
         Y_UNUSED(localExecutor);
         return MakeHolder<TExternalCatValuesHolder>(
@@ -258,6 +280,52 @@ namespace NCB {
             );
         }
     }
+    THolder<IFeatureValuesHolder> TExternalFloatSparseValuesHolder::CloneWithNewSubsetIndexing(
+        const TCloningParams& cloningParams,
+        OMPNPar::TLocalExecutor* localExecutor
+    ) const {
+        Y_UNUSED(localExecutor);
+
+        CB_ENSURE_INTERNAL(cloningParams.InvertedSubsetIndexing.Defined(), "InvertedSubsetIndexing should be defined");
+        const auto& subsetInvertedIndexing = cloningParams.InvertedSubsetIndexing.GetRef();
+
+        const auto floatFeatureIdx = QuantizedFeaturesInfo->GetPerTypeFeatureIdx<EFeatureType::Float>(
+            *this
+        );
+
+        if (HoldsAlternative<TFullSubset<ui32>>(*subsetInvertedIndexing)) {
+            // just clone
+            return MakeHolder<TExternalFloatSparseValuesHolder>(
+                this->GetId(),
+                SrcData,
+                QuantizedFeaturesInfo
+            );
+        } else {
+            const ui32 flatFeatureIdx = this->GetId();
+
+            const auto nanMode = QuantizedFeaturesInfo->GetNanMode(floatFeatureIdx);
+
+            /* it's ok even if it is learn data, for learn nans are checked at
+                * CalcBordersAndNanMode stage
+                */
+            const bool allowNans = (nanMode != ENanMode::Forbidden) ||
+                QuantizedFeaturesInfo->GetFloatFeaturesAllowNansInTestOnly();
+
+            TConstArrayRef<float> borders = QuantizedFeaturesInfo->GetBorders(floatFeatureIdx);
+
+            return CreateQuantizedSparseSubset<IQuantizedFloatValuesHolder, ui8>(
+                this->GetId(),
+                this->SrcData,
+                Get<TInvertedIndexedSubset<ui32>>(*subsetInvertedIndexing),
+                [=] (float srcValue) -> ui8 {
+                    return Quantize<ui8>(flatFeatureIdx, allowNans, nanMode, borders, srcValue);
+                },
+
+                // TODO(akhropov): fix wide histograms support - MLTOOLS-3758
+                sizeof(ui8) * CHAR_BIT
+            );
+        }
+    }
 
     IDynamicBlockIteratorBasePtr TExternalCatSparseValuesHolder::GetBlockIterator(ui32 offset) const {
         const auto catFeatureIdx = QuantizedFeaturesInfo->GetPerTypeFeatureIdx<EFeatureType::Categorical>(
@@ -318,4 +386,42 @@ namespace NCB {
             );
         }
     }
+
+    THolder<IFeatureValuesHolder> TExternalCatSparseValuesHolder::CloneWithNewSubsetIndexing(
+        const TCloningParams& cloningParams,
+        OMPNPar::TLocalExecutor* localExecutor
+    ) const {
+        Y_UNUSED(localExecutor);
+
+        CB_ENSURE_INTERNAL(cloningParams.InvertedSubsetIndexing.Defined(), "InvertedSubsetIndexing should be defined");
+        const auto& subsetInvertedIndexing = cloningParams.InvertedSubsetIndexing.GetRef();
+
+        const auto catFeatureIdx = QuantizedFeaturesInfo->GetPerTypeFeatureIdx<EFeatureType::Categorical>(
+            *this
+        );
+        if (HoldsAlternative<TFullSubset<ui32>>(*subsetInvertedIndexing)) {
+            // just clone
+            return MakeHolder<TExternalCatSparseValuesHolder>(
+                this->GetId(),
+                SrcData,
+                QuantizedFeaturesInfo
+            );
+        } else {
+            const auto& perfectHash
+                = this->QuantizedFeaturesInfo->GetCategoricalFeaturesPerfectHash(catFeatureIdx);
+
+            auto getPerfectHashValue = [&] (ui32 srcValue) -> ui32 {
+                return perfectHash.Find(srcValue)->Value;
+            };
+
+            return CreateQuantizedSparseSubset<IQuantizedCatValuesHolder, ui32>(
+                this->GetId(),
+                this->SrcData,
+                Get<TInvertedIndexedSubset<ui32>>(*subsetInvertedIndexing),
+                getPerfectHashValue,
+                sizeof(ui32) * CHAR_BIT
+            );
+        }
+    }
+
 }

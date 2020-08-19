@@ -5,21 +5,24 @@
 
 #include <catboost/libs/metrics/metric.h>
 #include <catboost/private/libs/options/restrictions.h>
+#include <library/cpp/threading/local_executor/omp_local_executor.h>
 
+template <typename LocalExecutorType>
 void UpdateApproxDeltasMulti(
     const TVector<TIndexType>& indices,
     int docCount,
     TConstArrayRef<TVector<double>> leafDeltas, //leafDeltas[dimension][leafId]
     TVector<TVector<double>>* approxDeltas,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 );
 
+template <typename LocalExecutorType>
 void UpdateApproxDeltasMulti(
     const TVector<TIndexType>& indices,
     int docCount,
     TConstArrayRef<double> leafDeltas, //leafDeltas[dimension]
     TVector<TVector<double>>* approxDeltas,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 );
 
 inline void AddDersRangeMulti(
@@ -35,6 +38,7 @@ inline void AddDersRangeMulti(
     TArrayRef<TSumMulti> leafDers // [dimensionIdx]
 );
 
+template <typename LocalExecutorType>
 void CalcLeafDersMulti(
     const TVector<TIndexType>& indices,
     TConstArrayRef<TConstArrayRef<float>> target,
@@ -45,7 +49,7 @@ void CalcLeafDersMulti(
     int sampleCount,
     bool isUpdateWeight,
     ELeavesEstimation estimationMethod,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TVector<TSumMulti>* leafDers
 );
 

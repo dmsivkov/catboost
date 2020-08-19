@@ -36,6 +36,16 @@ namespace NCB {
                 this->GetData().GetSubset(**cloningParams.InvertedSubsetIndexing)
             );
         }
+        THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
+            const TCloningParams& cloningParams,
+            OMPNPar::TLocalExecutor* localExecutor
+        ) const override {
+            Y_UNUSED(localExecutor);
+            return MakeHolder<TSparsePolymorphicArrayValuesHolder>(
+                this->GetId(),
+                this->GetData().GetSubset(**cloningParams.InvertedSubsetIndexing)
+            );
+        }
 
         TMaybeOwningArrayHolder<T> ExtractValues(NPar::TLocalExecutor* localExecutor) const override {
             Y_UNUSED(localExecutor);
@@ -75,6 +85,16 @@ namespace NCB {
         THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
             const TCloningParams& cloningParams,
             NPar::TLocalExecutor* localExecutor
+        ) const override {
+            Y_UNUSED(localExecutor);
+            return MakeHolder<TSparseCompressedValuesHolderImpl>(
+                this->GetId(),
+                this->GetData().GetSubset(**cloningParams.InvertedSubsetIndexing)
+            );
+        }
+        THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
+            const TCloningParams& cloningParams,
+            OMPNPar::TLocalExecutor* localExecutor
         ) const override {
             Y_UNUSED(localExecutor);
             return MakeHolder<TSparseCompressedValuesHolderImpl>(

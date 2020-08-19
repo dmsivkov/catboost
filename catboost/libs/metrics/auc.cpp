@@ -70,10 +70,11 @@ static bool CompareSamplesByTarget(const TSample& left, const TSample& right) {
     return left.Target < right.Target;
 }
 
+template <typename LocalExecutorType>
 static double ParallelSortAndCountInversions(
     TVector<TSample>* samples,
     TVector<TSample>* aux,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     if (samples->size() <= 1u) {
         return 0;
@@ -88,7 +89,7 @@ static double ParallelSortAndCountInversions(
         position += blockSizes[i];
     }
     TVector<double> threadResults(threadCount, 0);
-    NPar::ParallelFor(
+    common::ParallelFor(
         *localExecutor,
         0,
         threadCount,
@@ -116,7 +117,7 @@ static double ParallelSortAndCountInversions(
         }
         TVector<double> leftWeightsSum(mergeData.size(), 0);
         TVector<double> rightWeightsSum(mergeData.size(), 0);
-        NPar::ParallelFor(
+        common::ParallelFor(
             *localExecutor,
             0,
             mergeData.size(),
@@ -138,7 +139,7 @@ static double ParallelSortAndCountInversions(
             }
             position += threadsPerMergeCount[i];
         }
-        NPar::ParallelFor(
+        common::ParallelFor(
             *localExecutor,
             0,
             mergeData.size(),
@@ -169,7 +170,8 @@ static double ParallelSortAndCountInversions(
     return result;
 }
 
-double CalcAUC(TVector<TSample>* samples, NPar::TLocalExecutor* localExecutor, double* outWeightSum, double* outPairWeightSum) {
+template <typename LocalExecutorType>
+double CalcAUC(TVector<TSample>* samples, LocalExecutorType* localExecutor, double* outWeightSum, double* outPairWeightSum) {
     TVector<TSample> aux(samples->begin(), samples->end());
 
     NCB::ParallelMergeSort(CompareSamplesByPrediction, samples, localExecutor, &aux);
@@ -224,6 +226,10 @@ double CalcAUC(TVector<TSample>* samples, NPar::TLocalExecutor* localExecutor, d
 
     return 1 - ((2 * optimisticAUC + deltaSum) / (2.0 * pairWeightSum));
 }
+template
+double CalcAUC(TVector<TSample>* samples, NPar::TLocalExecutor* localExecutor, double* outWeightSum, double* outPairWeightSum);
+template
+double CalcAUC(TVector<TSample>* samples, OMPNPar::TLocalExecutor* localExecutor, double* outWeightSum, double* outPairWeightSum);
 
 double CalcAUC(TVector<TSample>* samples, double* outWeightSum, double* outPairWeightSum, int threadCount) {
     NPar::TLocalExecutor localExecutor;
@@ -235,10 +241,11 @@ static bool CompareBinClassSamplesByPrediction(const TBinClassSample& left, cons
     return left.Prediction < right.Prediction;
 }
 
+template <typename LocalExecutorType>
 double CalcBinClassAuc(
     TVector<TBinClassSample>* positiveSamples,
     TVector<TBinClassSample>* negativeSamples,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     if (positiveSamples->empty() || negativeSamples->empty()) {
         return 0;
@@ -265,7 +272,7 @@ double CalcBinClassAuc(
     NCB::TEqualRangesGenerator<ui32> rangesGenerator({0, (ui32)negativeSamples->size()}, threadCount);
     TVector<double> weightSumData(threadCount, 0);
     TVector<double> pairWeightSumData(threadCount, 0);
-    NPar::ParallelFor(
+    common::ParallelFor(
         *localExecutor,
         0,
         threadCount,
@@ -292,6 +299,19 @@ double CalcBinClassAuc(
     }
     return result;
 }
+template
+double CalcBinClassAuc<NPar::TLocalExecutor>(
+    TVector<TBinClassSample>* positiveSamples,
+    TVector<TBinClassSample>* negativeSamples,
+    NPar::TLocalExecutor* localExecutor
+);
+
+template
+double CalcBinClassAuc<OMPNPar::TLocalExecutor>(
+    TVector<TBinClassSample>* positiveSamples,
+    TVector<TBinClassSample>* negativeSamples,
+    OMPNPar::TLocalExecutor* localExecutor
+);
 
 double CalcBinClassAuc(
     TVector<NMetrics::TBinClassSample>* positiveSamples,

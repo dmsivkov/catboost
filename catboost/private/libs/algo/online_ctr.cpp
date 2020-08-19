@@ -189,11 +189,12 @@ static void CalcOnlineCTRClasses(
     }
 }
 
+template <typename LocalExecutorType>
 static void CalcStatsForEachBlock(
-    const NPar::TLocalExecutor::TExecRangeParams& ctrParallelizationParams,
+    const typename LocalExecutorType::TExecRangeParams& ctrParallelizationParams,
     TConstArrayRef<ui64> enumeratedCatFeatures,
     TConstArrayRef<int> permutedTargetClass,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TArrayRef<TVector<TCtrHistory>> perBlockCtrs
 ) {
     const int blockCount = ctrParallelizationParams.GetBlockCount();
@@ -210,13 +211,14 @@ static void CalcStatsForEachBlock(
         },
         0,
         blockCount,
-        NPar::TLocalExecutor::WAIT_COMPLETE
+        LocalExecutorType::WAIT_COMPLETE
     );
 }
 
+template <typename LocalExecutorType>
 static void SumCtrsFromBlocks(
-    const NPar::TLocalExecutor::TExecRangeParams& valueBlockParams,
-    NPar::TLocalExecutor* localExecutor,
+    const typename LocalExecutorType::TExecRangeParams& valueBlockParams,
+    LocalExecutorType* localExecutor,
     TArrayRef<TVector<TCtrHistory>> perBlockCtrs,
     TArrayRef<TCtrHistory> ctrs
 ) {
@@ -239,19 +241,20 @@ static void SumCtrsFromBlocks(
         },
         0,
         blockCount,
-        NPar::TLocalExecutor::WAIT_COMPLETE
+        LocalExecutorType::WAIT_COMPLETE
     );
 }
 
+template <typename LocalExecutorType>
 static void CalcQuantizedCtrs(
-    const NPar::TLocalExecutor::TExecRangeParams& ctrParallelizationParams,
+    const typename LocalExecutorType::TExecRangeParams& ctrParallelizationParams,
     TConstArrayRef<ui64> enumeratedCatFeatures,
     TConstArrayRef<int> permutedTargetClass,
     TConstArrayRef<float> priors,
     TConstArrayRef<float> shifts,
     TConstArrayRef<float> norms,
     int ctrBorderCount,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TArrayRef<TVector<TCtrHistory>> perBlockCtrs,
     TArray2D<TVector<ui8>>* feature
 ) {
@@ -302,10 +305,11 @@ static void CalcQuantizedCtrs(
         },
         0,
         blockCount,
-        NPar::TLocalExecutor::WAIT_COMPLETE
+        LocalExecutorType::WAIT_COMPLETE
     );
 }
 
+template <typename LocalExecutorType>
 static void CalcOnlineCTRSimple(
     const TVector<size_t>& testOffsets,
     const TVector<ui64>& enumeratedCatFeatures,
@@ -314,10 +318,10 @@ static void CalcOnlineCTRSimple(
     const TVector<float>& priors,
     int ctrBorderCount,
     TArray2D<TVector<ui8>>* feature,
-    NPar::TLocalExecutor* localExecutor) {
+    LocalExecutorType* localExecutor) {
 
     const int learnSampleCount = testOffsets[0];
-    NPar::TLocalExecutor::TExecRangeParams ctrParallelizationParams(0, learnSampleCount);
+    typename LocalExecutorType::TExecRangeParams ctrParallelizationParams(0, learnSampleCount);
     ctrParallelizationParams.SetBlockCount(localExecutor->GetThreadCount() + 1);
 
     const int bigBlockCount = ctrParallelizationParams.GetBlockCount();
@@ -325,7 +329,7 @@ static void CalcOnlineCTRSimple(
     ResizeRank2(bigBlockCount, uniqueValuesCount, perBlockCtrs);
     CalcStatsForEachBlock(ctrParallelizationParams, enumeratedCatFeatures, permutedTargetClass, localExecutor, perBlockCtrs);
 
-    NPar::TLocalExecutor::TExecRangeParams valueBlockParams(0, uniqueValuesCount);
+    typename LocalExecutorType::TExecRangeParams valueBlockParams(0, uniqueValuesCount);
     valueBlockParams.SetBlockSize(1 + 1000 / (localExecutor->GetThreadCount() + 1));
 
     TVector<TCtrHistory> ctrsForTest;
@@ -507,11 +511,11 @@ static inline void CountOnlineCTRTotal(
     }
 }
 
-template <typename TValueType>
+template <typename TValueType, typename LocalExecutorType>
 static void CopyCatColumnToHash(
     const IQuantizedCatValuesHolder& catColumn,
     const TFeaturesArraySubsetIndexing& featuresSubsetIndexing,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TValueType* hashArrView
 ) {
     TCloningParams cloningParams;
@@ -564,7 +568,7 @@ void ComputeOnlineCTRs(
             CopyCatColumnToHash(
                 **data.Learn->ObjectsData->GetCatFeature(*catFeatureIdx),
                 fold.LearnPermutationFeaturesSubset,
-                ctx->LocalExecutor,
+                ctx->OMPLocalExecutor,
                 hashArrView.data()
             );
         }
@@ -576,7 +580,7 @@ void ComputeOnlineCTRs(
             CopyCatColumnToHash(
                 **data.Test[testIdx]->ObjectsData->GetCatFeature(*catFeatureIdx),
                 data.Test[testIdx]->ObjectsData->GetFeaturesArraySubsetIndexing(),
-                ctx->LocalExecutor,
+                ctx->OMPLocalExecutor,
                 hashArrView.data() + docOffset
             );
             docOffset += testSampleCount;
@@ -585,7 +589,7 @@ void ComputeOnlineCTRs(
             quantizedFeaturesInfo.GetUniqueValuesCounts(TCatFeatureIdx(proj.CatFeatures[0])).OnLearnOnly
         );
     } else {
-        ParallelFill<ui64>(/*fillValue*/0, /*blockSize*/Nothing(), ctx->LocalExecutor, MakeArrayRef(hashArr));
+        ParallelFill<ui64>(/*fillValue*/0, /*blockSize*/Nothing(), ctx->OMPLocalExecutor, MakeArrayRef(hashArr));
         CalcHashes(
             proj,
             *data.Learn->ObjectsData,
@@ -593,7 +597,7 @@ void ComputeOnlineCTRs(
             nullptr,
             hashArr.begin(),
             hashArr.begin() + learnSampleCount,
-            ctx->LocalExecutor);
+/*BADPALCE*/            ctx->OMPLocalExecutor);
         for (size_t docOffset = learnSampleCount, testIdx = 0;
              docOffset < totalSampleCount && testIdx < data.Test.size();
              ++testIdx)
@@ -606,7 +610,7 @@ void ComputeOnlineCTRs(
                 nullptr,
                 hashArr.begin() + docOffset,
                 hashArr.begin() + docOffset + testSampleCount,
-                ctx->LocalExecutor);
+                ctx->OMPLocalExecutor);
             docOffset += testSampleCount;
         }
         size_t approxBucketsCount = 1;
@@ -658,7 +662,7 @@ void ComputeOnlineCTRs(
         counterCTRDenominator = *MaxElement(counterCTRTotal.begin(), counterCTRTotal.end());
     }
 
-    ctx->LocalExecutor->ExecRange(
+    ctx->OMPLocalExecutor->ExecRange(
         [&] (ui32 ctrIdx) {
             const ECtrType ctrType = ctrInfo[ctrIdx].Type;
             const ui32 classifierId = ctrInfo[ctrIdx].TargetClassifierIdx;
@@ -684,7 +688,7 @@ void ComputeOnlineCTRs(
                     priors,
                     ctrBorderCount,
                     &dst->Feature[ctrIdx],
-                    ctx->LocalExecutor);
+                    ctx->OMPLocalExecutor);
 
             } else if (ctrType == ECtrType::BinarizedTargetMeanValue) {
                 CalcOnlineCTRMean(

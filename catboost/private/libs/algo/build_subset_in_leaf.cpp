@@ -1,5 +1,6 @@
 #include "build_subset_in_leaf.h"
 
+template <typename LocalExecutorType>
 TVector<TLeafStatistics> BuildSubset(
     TConstArrayRef<TIndexType> leafIndices,
     TConstArrayRef<TVector<double>> approx,
@@ -10,7 +11,7 @@ TVector<TLeafStatistics> BuildSubset(
     int sampleCount,
     double sumWeight,
     bool needSampleWeights,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     const int approxDimension = approx.ysize();
     TVector<TLeafStatistics> leafStatistics(
@@ -55,8 +56,8 @@ TVector<TLeafStatistics> BuildSubset(
         }
     }
 
-    NPar::ParallelFor(
-        *localExecutor,
+    common::ParallelFor(
+        (LocalExecutorType&)(*localExecutor),
         0,
         sampleCount,
         [&](int docIdx) {
@@ -81,6 +82,33 @@ TVector<TLeafStatistics> BuildSubset(
     return leafStatistics;
 }
 
+template
+TVector<TLeafStatistics> BuildSubset<NPar::TLocalExecutor>(
+    TConstArrayRef<TIndexType> leafIndices,
+    TConstArrayRef<TVector<double>> approx,
+    TConstArrayRef<TVector<float>> labels,
+    TConstArrayRef<float> weights,
+    TConstArrayRef<float> sampleWeights,
+    int leafCount,
+    int sampleCount,
+    double sumWeight,
+    bool needSampleWeights,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+TVector<TLeafStatistics> BuildSubset<OMPNPar::TLocalExecutor>(
+    TConstArrayRef<TIndexType> leafIndices,
+    TConstArrayRef<TVector<double>> approx,
+    TConstArrayRef<TVector<float>> labels,
+    TConstArrayRef<float> weights,
+    TConstArrayRef<float> sampleWeights,
+    int leafCount,
+    int sampleCount,
+    double sumWeight,
+    bool needSampleWeights,
+    OMPNPar::TLocalExecutor* localExecutor
+);
+
 TVector<TLeafStatistics> BuildSubset(
     TConstArrayRef<TIndexType> leafIndices,
     int leafCount,
@@ -96,5 +124,5 @@ TVector<TLeafStatistics> BuildSubset(
         ctx->LearnProgress->AveragingFold.GetLearnSampleCount(),
         ctx->LearnProgress->AveragingFold.GetSumWeight(),
         ctx->Params.ObliviousTreeOptions->LeavesEstimationMethod == ELeavesEstimation::Exact,
-        ctx->LocalExecutor);
+        ctx->OMPLocalExecutor);
 }

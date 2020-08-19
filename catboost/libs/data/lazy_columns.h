@@ -77,6 +77,18 @@ namespace NCB {
                 PoolLoader
             );
         }
+        THolder<IFeatureValuesHolder> CloneWithNewSubsetIndexing(
+            const TCloningParams& cloningParams,
+            OMPNPar::TLocalExecutor* localExecutor
+        ) const override {
+            Y_UNUSED(localExecutor);
+            CB_ENSURE_INTERNAL(!cloningParams.MakeConsecutive, "Making consecutive not supported on Lazy columns for now");
+            return MakeHolder<TLazyCompressedValuesHolderImpl>(
+                TBase::GetId(),
+                cloningParams.SubsetIndexing,
+                PoolLoader
+            );
+        }
 
         IDynamicBlockIteratorBasePtr GetBlockIterator(ui32 offset) const override {
             return MakeHolder<TLazyCompressedValuesIterator<ui8>>(

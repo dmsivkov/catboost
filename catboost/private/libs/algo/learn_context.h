@@ -30,6 +30,10 @@ namespace NPar {
     class TLocalExecutor;
 }
 
+namespace OMPNPar {
+    class TLocalExecutor;
+}
+
 namespace NCatboostOptions {
     struct TBinarizationOptions;
 }
@@ -178,6 +182,7 @@ public:
     TCtrHelper CtrsHelper;
     // TODO(asaitgalin): local executor should be shared by all contexts. MLTOOLS-2451.
     NPar::TLocalExecutor* LocalExecutor;
+    OMPNPar::TLocalExecutor* OMPLocalExecutor;
 };
 
 

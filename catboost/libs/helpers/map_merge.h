@@ -5,6 +5,7 @@
 #include <catboost/private/libs/index_range/index_range.h>
 
 #include <library/cpp/threading/local_executor/local_executor.h>
+#include <library/cpp/threading/local_executor/omp_local_executor.h>
 
 #include <util/generic/vector.h>
 #include <util/generic/utility.h>
@@ -24,9 +25,9 @@ namespace NCB {
      * mergeFunc(dst, addVector) adds addVector data to dst, it can modify addVector as it is no
      *   longer used after this call
      */
-    template <class TOutput, class TMapFunc, class TMergeFunc>
+    template <class TOutput, class TMapFunc, class TMergeFunc, typename LocalExecutorType>
     void MapMerge(
-        NPar::TLocalExecutor* localExecutor,
+        LocalExecutorType* localExecutor,
         const IIndexRangesGenerator<int>& indexRangesGenerator,
         TMapFunc&& mapFunc, // void(NCB::TIndexRange, TOutput*)
         TMergeFunc&& mergeFunc, // void(TOutput*, TVector<TOutput>&&)

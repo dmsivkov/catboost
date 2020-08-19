@@ -8,13 +8,13 @@
 
 class IDerCalcer;
 struct TRestorableFastRng64;
-
+template <typename LocalExecutorType>
 void CalcLeafValues(
     const IDerCalcer& error,
     const NCatboostOptions::TCatBoostOptions& params,
     TLeafStatistics* statistics,
     TRestorableFastRng64* rng,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TArrayRef<TDers> weightedDers = {});
 
 void AssignLeafValues(

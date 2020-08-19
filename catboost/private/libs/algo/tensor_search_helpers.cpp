@@ -267,11 +267,12 @@ static float GenerateBayessianWeight(float baggingTemperature, TRestorableFastRn
     return powf(w, baggingTemperature);
 }
 
+template <typename LocalExecutorType>
 static void GenerateRandomWeights(
     int learnSampleCount,
     float baggingTemperature,
     ESamplingUnit samplingUnit,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TRestorableFastRng64* rand,
     TFold* fold
 ) {
@@ -284,14 +285,14 @@ static void GenerateRandomWeights(
     const ui64 randSeed = rand->GenRand();
     const int sampleCount = (samplingUnit == ESamplingUnit::Group) ? groupCount : learnSampleCount;
 
-    NPar::TLocalExecutor::TExecRangeParams blockParams(0, sampleCount);
+    typename LocalExecutorType::TExecRangeParams blockParams(0, sampleCount);
     blockParams.SetBlockSize(1000);
     localExecutor->ExecRange(
         [&](int blockIdx) {
             TRestorableFastRng64 rand(randSeed + blockIdx);
             rand.Advance(10); // reduce correlation between RNGs in different threads
             float* sampleWeightsData = fold->SampleWeights.data();
-            NPar::TLocalExecutor::BlockedLoopBody(
+            LocalExecutorType::BlockedLoopBody(
                 blockParams,
                 [=,&rand](int i) {
                 const float w = GenerateBayessianWeight(baggingTemperature, rand);
@@ -306,13 +307,14 @@ static void GenerateRandomWeights(
         },
         0,
         blockParams.GetBlockCount(),
-        NPar::TLocalExecutor::WAIT_COMPLETE);
+        LocalExecutorType::WAIT_COMPLETE);
 }
 
+template <typename LocalExecutorType>
 static void GenerateBayesianWeightsForPairs(
     float baggingTemperature,
     ESamplingUnit samplingUnit,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TRestorableFastRng64* rand,
     TFold* fold
 ) {
@@ -320,13 +322,13 @@ static void GenerateBayesianWeightsForPairs(
         return;
     }
     const ui64 randSeed = rand->GenRand();
-    NPar::TLocalExecutor::TExecRangeParams blockParams(0, fold->LearnQueriesInfo.ysize());
+    typename LocalExecutorType::TExecRangeParams blockParams(0, fold->LearnQueriesInfo.ysize());
     blockParams.SetBlockSize(1000);
     localExecutor->ExecRange(
         [&](int blockIdx) {
             TRestorableFastRng64 rand(randSeed + blockIdx);
             rand.Advance(10); // reduce correlation between RNGs in different threads
-            NPar::TLocalExecutor::BlockedLoopBody(
+            LocalExecutorType::BlockedLoopBody(
                 blockParams,
                 [&](int i) {
                     const float wGroup = GenerateBayessianWeight(baggingTemperature, rand);
@@ -341,13 +343,14 @@ static void GenerateBayesianWeightsForPairs(
         },
         0,
         blockParams.GetBlockCount(),
-        NPar::TLocalExecutor::WAIT_COMPLETE);
+        LocalExecutorType::WAIT_COMPLETE);
 }
 
+template <typename LocalExecutorType>
 static void GenerateBernoulliWeightsForPairs(
     float takenFraction,
     ESamplingUnit samplingUnit,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TRestorableFastRng64* rand,
     TFold* fold
 ) {
@@ -355,13 +358,13 @@ static void GenerateBernoulliWeightsForPairs(
         return;
     }
     const ui64 randSeed = rand->GenRand();
-    NPar::TLocalExecutor::TExecRangeParams blockParams(0, fold->LearnQueriesInfo.ysize());
+    typename LocalExecutorType::TExecRangeParams blockParams(0, fold->LearnQueriesInfo.ysize());
     blockParams.SetBlockSize(1000);
     localExecutor->ExecRange(
         [&](int blockIdx) {
             TRestorableFastRng64 rand(randSeed + blockIdx);
             rand.Advance(10); // reduce correlation between RNGs in different threads
-            NPar::TLocalExecutor::BlockedLoopBody(
+            LocalExecutorType::BlockedLoopBody(
                 blockParams,
                 [&](int i) {
                     const double wGroup = rand.GenRandReal1();
@@ -379,13 +382,14 @@ static void GenerateBernoulliWeightsForPairs(
         },
         0,
         blockParams.GetBlockCount(),
-        NPar::TLocalExecutor::WAIT_COMPLETE);
+        LocalExecutorType::WAIT_COMPLETE);
 }
 
+template <typename LocalExecutorType>
 static void CalcWeightedData(
     int learnSampleCount,
     EBoostingType boostingType,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TFold* fold
 ) {
     TFold& ff = *fold;
@@ -404,8 +408,8 @@ static void CalcWeightedData(
                 [=](int z) {
                     samplePairwiseWeightsData[z] = pairwiseWeightsData[z] * sampleWeightsData[z];
                 },
-                NPar::TLocalExecutor::TExecRangeParams(begin, bt.TailFinish).SetBlockSize(4000),
-                NPar::TLocalExecutor::WAIT_COMPLETE);
+                typename LocalExecutorType::TExecRangeParams(begin, bt.TailFinish).SetBlockSize(4000),
+                LocalExecutorType::WAIT_COMPLETE);
         }
         for (int dim = 0; dim < approxDimension; ++dim) {
             const double* weightedDerivativesData = bt.WeightedDerivatives[dim].data();
@@ -414,8 +418,8 @@ static void CalcWeightedData(
                 [=](int z) {
                     sampleWeightedDerivativesData[z] = weightedDerivativesData[z] * sampleWeightsData[z];
                 },
-                NPar::TLocalExecutor::TExecRangeParams(begin, bt.TailFinish).SetBlockSize(4000),
-                NPar::TLocalExecutor::WAIT_COMPLETE);
+                typename LocalExecutorType::TExecRangeParams(begin, bt.TailFinish).SetBlockSize(4000),
+                LocalExecutorType::WAIT_COMPLETE);
         }
     }
 
@@ -427,6 +431,7 @@ static void CalcWeightedData(
     }
 }
 
+template <typename LocalExecutorType>
 void Bootstrap(
     const NCatboostOptions::TCatBoostOptions& params,
     bool hasOfflineEstimatedFeatures,
@@ -434,7 +439,7 @@ void Bootstrap(
     const TVector<TVector<TVector<double>>>& leafValues,
     TFold* fold,
     TCalcScoreFold* sampledDocs,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TRestorableFastRng64* rand,
     bool shouldSortByLeaf,
     ui32 leavesCount
@@ -507,14 +512,40 @@ void Bootstrap(
     CB_ENSURE(sampledDocs->GetDocCount() > 0, "Too few sampling units (subsample=" << takenFraction
         << ", bootstrap_type=" << bootstrapType << "): please increase sampling rate or disable sampling");
 }
-
+template
+void Bootstrap<NPar::TLocalExecutor>(
+    const NCatboostOptions::TCatBoostOptions& params,
+    bool hasOfflineEstimatedFeatures,
+    const TVector<TIndexType>& indices,
+    const TVector<TVector<TVector<double>>>& leafValues,
+    TFold* fold,
+    TCalcScoreFold* sampledDocs,
+    NPar::TLocalExecutor* localExecutor,
+    TRestorableFastRng64* rand,
+    bool shouldSortByLeaf,
+    ui32 leavesCount
+);
+template
+void Bootstrap<OMPNPar::TLocalExecutor>(
+    const NCatboostOptions::TCatBoostOptions& params,
+    bool hasOfflineEstimatedFeatures,
+    const TVector<TIndexType>& indices,
+    const TVector<TVector<TVector<double>>>& leafValues,
+    TFold* fold,
+    TCalcScoreFold* sampledDocs,
+    OMPNPar::TLocalExecutor* localExecutor,
+    TRestorableFastRng64* rand,
+    bool shouldSortByLeaf,
+    ui32 leavesCount
+);
+template <typename LocalExecutorType>
 void CalcWeightedDerivatives(
     const IDerCalcer& error,
     int bodyTailIdx,
     const NCatboostOptions::TCatBoostOptions& params,
     ui64 randomSeed,
     TFold* takenFold,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     TFold::TBodyTail& bt = takenFold->BodyTailArr[bodyTailIdx];
     const TVector<TVector<double>>& approx = bt.Approx;
@@ -565,7 +596,7 @@ void CalcWeightedDerivatives(
     } else {
         const int tailFinish = bt.TailFinish;
         const int approxDimension = approx.ysize();
-        NPar::TLocalExecutor::TExecRangeParams blockParams(0, tailFinish);
+        typename LocalExecutorType::TExecRangeParams blockParams(0, tailFinish);
         blockParams.SetBlockSize(1000);
 
         Y_ASSERT(error.GetErrorType() == EErrorType::PerObjectError);
@@ -576,7 +607,7 @@ void CalcWeightedDerivatives(
                     TVector<double> curApprox(approxDimension);
                     TVector<float> curTarget(multiTarget.size());
                     TVector<double> curDelta(approxDimension);
-                    NPar::TLocalExecutor::BlockedLoopBody(
+                    LocalExecutorType::BlockedLoopBody(
                         blockParams,
                         [&](int docId) {
                             for (auto dim : xrange(approxDimension)) {
@@ -599,7 +630,7 @@ void CalcWeightedDerivatives(
                 },
                 0,
                 blockParams.GetBlockCount(),
-                NPar::TLocalExecutor::WAIT_COMPLETE);
+                LocalExecutorType::WAIT_COMPLETE);
         } else if (approxDimension == 1) {
             localExecutor->ExecRangeWithThrow(
                 [&](int blockId) {
@@ -615,13 +646,13 @@ void CalcWeightedDerivatives(
                 },
                 0,
                 blockParams.GetBlockCount(),
-                NPar::TLocalExecutor::WAIT_COMPLETE);
+                LocalExecutorType::WAIT_COMPLETE);
         } else {
             localExecutor->ExecRangeWithThrow(
                 [&](int blockId) {
                     TVector<double> curApprox(approxDimension);
                     TVector<double> curDelta(approxDimension);
-                    NPar::TLocalExecutor::BlockedLoopBody(
+                    LocalExecutorType::BlockedLoopBody(
                         blockParams,
                         [&](int z) {
                             for (int dim = 0; dim < approxDimension; ++dim) {
@@ -640,11 +671,28 @@ void CalcWeightedDerivatives(
                 },
                 0,
                 blockParams.GetBlockCount(),
-                NPar::TLocalExecutor::WAIT_COMPLETE);
+                LocalExecutorType::WAIT_COMPLETE);
         }
     }
 }
-
+template
+void CalcWeightedDerivatives<NPar::TLocalExecutor>(
+    const IDerCalcer& error,
+    int bodyTailIdx,
+    const NCatboostOptions::TCatBoostOptions& params,
+    ui64 randomSeed,
+    TFold* takenFold,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+void CalcWeightedDerivatives<OMPNPar::TLocalExecutor>(
+    const IDerCalcer& error,
+    int bodyTailIdx,
+    const NCatboostOptions::TCatBoostOptions& params,
+    ui64 randomSeed,
+    TFold* takenFold,
+    OMPNPar::TLocalExecutor* localExecutor
+);
 void SetBestScore(
     ui64 randSeed,
     const TVector<TVector<double>>& allScores,

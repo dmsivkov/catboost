@@ -190,7 +190,7 @@ void CalcErrors(
                     weights,
                     queryInfo,
                     trainMetrics,
-                    ctx->LocalExecutor
+                    ctx->OMPLocalExecutor
                 );
 
                 for (auto i : xrange(trainMetrics.size())) {
@@ -224,7 +224,7 @@ void CalcErrors(
                 weights,
                 queryInfo,
                 testMetrics,
-                ctx->LocalExecutor
+                ctx->OMPLocalExecutor
             );
 
             for (int i : xrange(testMetrics.size())) {

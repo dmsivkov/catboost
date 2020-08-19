@@ -2,8 +2,8 @@
 
 #include <util/generic/cast.h>
 
-
-void NCB::ExecuteTasksInParallel(TVector<std::function<void()>>* tasks, NPar::TLocalExecutor* localExecutor) {
+template <typename LocalExecutorType>
+void NCB::ExecuteTasksInParallel(TVector<std::function<void()>>* tasks, LocalExecutorType* localExecutor) {
     localExecutor->ExecRangeWithThrow(
         [&tasks](int id) {
             (*tasks)[id]();
@@ -11,6 +11,10 @@ void NCB::ExecuteTasksInParallel(TVector<std::function<void()>>* tasks, NPar::TL
         },
         0,
         SafeIntegerCast<int>(tasks->size()),
-        NPar::TLocalExecutor::WAIT_COMPLETE
+        LocalExecutorType::WAIT_COMPLETE
     );
 }
+template
+void NCB::ExecuteTasksInParallel<NPar::TLocalExecutor>(TVector<std::function<void()>>* tasks, NPar::TLocalExecutor* localExecutor);
+template
+void NCB::ExecuteTasksInParallel<OMPNPar::TLocalExecutor>(TVector<std::function<void()>>* tasks, OMPNPar::TLocalExecutor* localExecutor);

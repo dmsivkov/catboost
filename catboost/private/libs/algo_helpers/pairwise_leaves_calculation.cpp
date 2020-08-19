@@ -51,12 +51,13 @@ TVector<double> CalculatePairwiseLeafValues(
     return res;
 }
 
+template <typename LocalExecutorType>
 TArray2D<double> ComputePairwiseWeightSums(
     const TVector<TQueryInfo>& queriesInfo,
     int leafCount,
     int querycount,
     const TVector<TIndexType>& indices,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     const auto mapQueries = [&](const NCB::TIndexRange<int>& range, TArray2D<double>* rangeSum) {
         rangeSum->SetSizes(leafCount, leafCount);
@@ -95,3 +96,19 @@ TArray2D<double> ComputePairwiseWeightSums(
 
     return mergedSum;
 }
+template
+TArray2D<double> ComputePairwiseWeightSums<NPar::TLocalExecutor>(
+    const TVector<TQueryInfo>& queriesInfo,
+    int leafCount,
+    int querycount,
+    const TVector<TIndexType>& indices,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+TArray2D<double> ComputePairwiseWeightSums<OMPNPar::TLocalExecutor>(
+    const TVector<TQueryInfo>& queriesInfo,
+    int leafCount,
+    int querycount,
+    const TVector<TIndexType>& indices,
+    OMPNPar::TLocalExecutor* localExecutor
+);

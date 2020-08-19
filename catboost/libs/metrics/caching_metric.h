@@ -16,6 +16,7 @@ struct TMetricConfig;
 
 TVector<THolder<IMetric>> CreateCachingMetrics(const TMetricConfig& config);
 
+template <typename LocalExecutorType>
 TVector<TMetricHolder> EvalErrorsWithCaching(
     const TVector<TVector<double>>& approx,
     const TVector<TVector<double>>& approxDelta,
@@ -24,7 +25,7 @@ TVector<TMetricHolder> EvalErrorsWithCaching(
     TConstArrayRef<float> weight,
     TConstArrayRef<TQueryInfo> queriesInfo,
     TConstArrayRef<const IMetric *> metrics,
-    NPar::TLocalExecutor *localExecutor
+    LocalExecutorType *localExecutor
 );
 
 inline static TVector<TMetricHolder> EvalErrorsWithCaching(

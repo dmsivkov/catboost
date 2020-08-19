@@ -10,12 +10,13 @@ namespace NPar {
     class TLocalExecutor;
 }
 
+template <typename LocalExecutorType>
 void AddLangevinNoiseToDerivatives(
     float diffusionTemperature,
     float learningRate,
     ui64 randomSeed,
     TVector<TVector<double>>* derivatives,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 );
 
 void AddLangevinNoiseToLeafDerivativesSum(

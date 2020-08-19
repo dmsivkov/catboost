@@ -112,6 +112,24 @@ namespace {
 
             return ParallelEvalMetric(evalMetric, GetMinBlockSize(end - begin), begin, end, executor);
         }
+        TMetricHolder Eval(
+            TConstArrayRef<TVector<double>> approx,
+            TConstArrayRef<TVector<double>> approxDelta,
+            TConstArrayRef<TConstArrayRef<float>> target,
+            TConstArrayRef<float> weight,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
+        ) const final {
+            const auto evalMetric = [&](int from, int to) {
+                return EvalSingleThread(
+                    approx, approxDelta, target, UseWeights.IsIgnored() || UseWeights ? weight : TArrayRef<float>{}, from, to
+                );
+            };
+
+            return ParallelEvalMetric(evalMetric, GetMinBlockSize(end - begin), begin, end, executor);
+        }
+
 
         virtual TMetricHolder EvalSingleThread(
             TConstArrayRef<TVector<double>> approx,
@@ -152,6 +170,38 @@ namespace {
             int begin,
             int end,
             NPar::TLocalExecutor& executor
+        ) const final {
+            const auto evalMetric = [&](int from, int to) {
+                return EvalSingleThread(
+                    approx, approxDelta, isExpApprox, target, UseWeights.IsIgnored() || UseWeights ? weight : TVector<float>{}, queriesInfo, from, to
+                );
+            };
+
+            return ParallelEvalMetric(evalMetric, GetMinBlockSize(end - begin), begin, end, executor);
+        }
+
+        TMetricHolder Eval(
+            const TVector<TVector<double>>& approx,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
+        ) const final {
+            return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
+        }
+
+        TMetricHolder Eval(
+            const TConstArrayRef<TConstArrayRef<double>> approx,
+            const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+            bool isExpApprox,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
         ) const final {
             const auto evalMetric = [&](int from, int to) {
                 return EvalSingleThread(
@@ -1334,6 +1384,16 @@ namespace {
                     return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
                 }
         TMetricHolder Eval(
+                const TVector<TVector<double>>& approx,
+                TConstArrayRef<float> target,
+                TConstArrayRef<float> weight,
+                TConstArrayRef<TQueryInfo> queriesInfo,
+                int begin,
+                int end,
+                OMPNPar::TLocalExecutor& executor) const override {
+                    return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
+                }
+        TMetricHolder Eval(
                 const TConstArrayRef<TConstArrayRef<double>> approx,
                 const TConstArrayRef<TConstArrayRef<double>> approxDelta,
                 bool isExpApprox,
@@ -1343,6 +1403,16 @@ namespace {
                 int begin,
                 int end,
                 NPar::TLocalExecutor& executor) const override;
+        TMetricHolder Eval(
+                const TConstArrayRef<TConstArrayRef<double>> approx,
+                const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+                bool isExpApprox,
+                TConstArrayRef<float> target,
+                TConstArrayRef<float> weight,
+                TConstArrayRef<TQueryInfo> queriesInfo,
+                int begin,
+                int end,
+                OMPNPar::TLocalExecutor& executor) const override;
         void GetBestValue(EMetricBestValue* valueType, float* bestValue) const override;
     };
 }
@@ -1362,6 +1432,46 @@ TMetricHolder TMedianAbsoluteErrorMetric::Eval(
     int begin,
     int end,
     NPar::TLocalExecutor& /*executor*/
+) const {
+    CB_ENSURE(approx.size() == 1, "Metric Median absolute error supports only single-dimensional data");
+    Y_ASSERT(!isExpApprox);
+    const auto& approxVec = approx.front();
+    Y_ASSERT(approxVec.size() == target.size());
+
+    TMetricHolder error(2);
+    TVector<double> values;
+    values.reserve(end - begin);
+    if (approxDelta.empty()) {
+        for (int i = begin; i < end; ++i) {
+            values.push_back(fabs(approxVec[i] - target[i]));
+        }
+    } else {
+        for (int i = begin; i < end; ++i) {
+            values.push_back(fabs(approxVec[i] + approxDelta[0][i] - target[i]));
+        }
+    }
+    int median = (end - begin) / 2;
+    PartialSort(values.begin(), values.begin() + median + 1, values.end());
+    if (target.size() % 2 == 0) {
+        error.Stats[0] = (values[median - 1] + values[median]) / 2;
+    } else {
+        error.Stats[0] = values[median];
+    }
+    error.Stats[1] = 1;
+
+    return error;
+}
+
+TMetricHolder TMedianAbsoluteErrorMetric::Eval(
+    const TConstArrayRef<TConstArrayRef<double>> approx,
+    const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+    bool isExpApprox,
+    TConstArrayRef<float> target,
+    TConstArrayRef<float> /*weight*/,
+    TConstArrayRef<TQueryInfo> /*queriesInfo*/,
+    int begin,
+    int end,
+    OMPNPar::TLocalExecutor& /*executor*/
 ) const {
     CB_ENSURE(approx.size() == 1, "Metric Median absolute error supports only single-dimensional data");
     Y_ASSERT(!isExpApprox);
@@ -2367,7 +2477,17 @@ namespace {
         ) const override {
             return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
         }
-
+        TMetricHolder Eval(
+            const TVector<TVector<double>>& approx,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
+        ) const override {
+            return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
+        }
         TMetricHolder Eval(
             const TConstArrayRef<TConstArrayRef<double>> approx,
             const TConstArrayRef<TConstArrayRef<double>> approxDelta,
@@ -2378,6 +2498,17 @@ namespace {
             int begin,
             int end,
             NPar::TLocalExecutor& executor
+        ) const;
+        TMetricHolder Eval(
+            const TConstArrayRef<TConstArrayRef<double>> approx,
+            const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+            bool isExpApprox,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
         ) const;
         double GetFinalError(const TMetricHolder& error) const override;
         void GetBestValue(EMetricBestValue* valueType, float* bestValue) const override;
@@ -2439,6 +2570,38 @@ TMetricHolder TR2Metric::Eval(
     int begin,
     int end,
     NPar::TLocalExecutor& executor
+) const {
+    CB_ENSURE(approx.size() == 1, "Metric R2 supports only single-dimensional data");
+    Y_ASSERT(!isExpApprox);
+
+    auto targetMeanCalcer = TR2TargetSumMetric();
+    auto targetMean = targetMeanCalcer.GetFinalError(
+        targetMeanCalcer.Eval(
+            /*approx*/{}, /*approxDelta*/{}, /*isExpApprox*/false,
+            target, UseWeights ? weight : TVector<float>(),
+            /*queriesInfo*/{},
+            begin, end, executor
+        )
+    );
+
+    return TR2ImplMetric(targetMean).Eval(
+        approx, approxDelta,
+        /*isExpApprox*/false,
+        target, UseWeights ? weight : TVector<float>(),
+        /*queriesInfo*/{},
+        begin, end, executor
+    );
+}
+TMetricHolder TR2Metric::Eval(
+    const TConstArrayRef<TConstArrayRef<double>> approx,
+    const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+    bool isExpApprox,
+    TConstArrayRef<float> target,
+    TConstArrayRef<float> weight,
+    TConstArrayRef<TQueryInfo> /*queriesInfo*/,
+    int begin,
+    int end,
+    OMPNPar::TLocalExecutor& executor
 ) const {
     CB_ENSURE(approx.size() == 1, "Metric R2 supports only single-dimensional data");
     Y_ASSERT(!isExpApprox);
@@ -2526,6 +2689,16 @@ namespace {
                 return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
         }
         TMetricHolder Eval(
+            const TVector<TVector<double>>& approx,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor) const override {
+                return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
+        }
+        TMetricHolder Eval(
             const TConstArrayRef<TConstArrayRef<double>> approx,
             const TConstArrayRef<TConstArrayRef<double>> approxDelta,
             bool isExpApprox,
@@ -2535,6 +2708,16 @@ namespace {
             int begin,
             int end,
             NPar::TLocalExecutor& executor) const override;
+        TMetricHolder Eval(
+            const TConstArrayRef<TConstArrayRef<double>> approx,
+            const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+            bool isExpApprox,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor) const override;
         TString GetDescription() const override;
         void GetBestValue(EMetricBestValue* valueType, float* bestValue) const override;
 
@@ -2680,6 +2863,81 @@ TMetricHolder TAUCMetric::Eval(
     return error;
 }
 
+TMetricHolder TAUCMetric::Eval(
+    const TConstArrayRef<TConstArrayRef<double>> approx,
+    const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+    bool isExpApprox,
+    TConstArrayRef<float> target,
+    TConstArrayRef<float> weight,
+    TConstArrayRef<TQueryInfo> /*queriesInfo*/,
+    int begin,
+    int end,
+    OMPNPar::TLocalExecutor& executor
+) const {
+    Y_ASSERT(!isExpApprox);
+    Y_ASSERT((approx.size() > 1) == (Type == EAucType::Mu || Type == EAucType::OneVsAll));
+    Y_ASSERT(approx.front().size() == target.size());
+    if (Type == EAucType::Mu && MisclassCostMatrix) {
+        CB_ENSURE(MisclassCostMatrix->size() == approx.size(), "Number of classes should be equal to the size of the misclass cost matrix.");
+    }
+
+    if (Type == EAucType::Mu) {
+        TVector<TVector<double>> currentApprox;
+        ResizeRank2(approx.size(), approx[0].size(), currentApprox);
+        AssignRank2(MakeArrayRef(approx), &currentApprox);
+        if (!approxDelta.empty()) {
+            for (ui32 i = 0; i < approx.size(); ++i) {
+                for (ui32 j = 0; j < approx[i].size(); ++j) {
+                    currentApprox[i][j] += approxDelta[i][j];
+                }
+            }
+        }
+        TMetricHolder error(2);
+        error.Stats[0] = CalcMuAuc(currentApprox, target, UseWeights ? weight : TConstArrayRef<float>(), &executor, MisclassCostMatrix);
+        error.Stats[1] = 1;
+        return error;
+    }
+
+    const auto realApprox = [&](int idx) {
+        return approx[Type == EAucType::OneVsAll ? PositiveClass : 0][idx]
+        + (approxDelta.empty() ? 0.0 : approxDelta[Type == EAucType::OneVsAll ? PositiveClass : 0][idx]);
+    };
+    const auto realWeight = [&](int idx) {
+        return UseWeights && !weight.empty() ? weight[idx] : 1.0;
+    };
+    const auto realTarget = [&](int idx) {
+        return Type == EAucType::OneVsAll ? target[idx] == static_cast<double>(PositiveClass) : target[idx];
+    };
+
+    TMetricHolder error(2);
+    error.Stats[1] = 1.0;
+
+    if (Type == EAucType::Ranking) {
+        TVector<NMetrics::TSample> samples;
+        samples.reserve(end - begin);
+        for (int i : xrange(begin, end)) {
+            samples.emplace_back(realTarget(i), realApprox(i), realWeight(i));
+        }
+        error.Stats[0] = CalcAUC(&samples, &executor);
+    } else {
+        TVector<NMetrics::TBinClassSample> positiveSamples, negativeSamples;
+        for (int i : xrange(begin, end)) {
+            const auto currentTarget = realTarget(i);
+            CB_ENSURE(0 <= currentTarget && currentTarget <= 1, "All target values should be in the segment [0, 1], for Ranking AUC please use type=Ranking.");
+            if (currentTarget > 0) {
+                positiveSamples.emplace_back(realApprox(i), currentTarget * realWeight(i));
+            }
+            if (currentTarget < 1) {
+                negativeSamples.emplace_back(realApprox(i), (1 - currentTarget) * realWeight(i));
+            }
+        }
+        error.Stats[0] = CalcBinClassAuc(&positiveSamples, &negativeSamples, &executor);
+    }
+
+    return error;
+}
+
+
 template<typename T>
 static TString ConstructDescriptionOfSquareMatrix(const TVector<TVector<T>>& matrix) {
     TString matrixInString = "";
@@ -2749,6 +3007,16 @@ namespace {
                 return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
         }
         TMetricHolder Eval(
+            const TVector<TVector<double>>& approx,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor) const override {
+                return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
+        }
+        TMetricHolder Eval(
             const TConstArrayRef<TConstArrayRef<double>> approx,
             const TConstArrayRef<TConstArrayRef<double>> approxDelta,
             bool isExpApprox,
@@ -2758,6 +3026,16 @@ namespace {
             int begin,
             int end,
             NPar::TLocalExecutor& executor) const override;
+        TMetricHolder Eval(
+            const TConstArrayRef<TConstArrayRef<double>> approx,
+            const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+            bool isExpApprox,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor) const override;
         TString GetDescription() const override;
         void GetBestValue(EMetricBestValue* valueType, float* bestValue) const override;
     private:
@@ -2789,6 +3067,43 @@ TMetricHolder TNormalizedGini::Eval(
     int begin,
     int end,
     NPar::TLocalExecutor& executor
+) const {
+    Y_ASSERT(!isExpApprox);
+    Y_ASSERT((approx.size() > 1) == IsMultiClass);
+    Y_ASSERT(approx.front().size() == target.size());
+
+    const auto realApprox = [&](int idx) {
+        return approx[IsMultiClass ? PositiveClass : 0][idx]
+        + (approxDelta.empty() ? 0.0 : approxDelta[IsMultiClass ? PositiveClass : 0][idx]);
+    };
+    const auto realWeight = [&](int idx) {
+        return UseWeights && !weight.empty() ? weight[idx] : 1.0;
+    };
+    const auto realTarget = [&](int idx) {
+        return IsMultiClass ? target[idx] == static_cast<double>(PositiveClass) : target[idx] > TargetBorder;
+    };
+
+    TVector<NMetrics::TSample> samples;
+    for (auto i : xrange(begin, end)) {
+        samples.emplace_back(realTarget(i), realApprox(i), realWeight(i));
+    }
+
+    TMetricHolder error(2);
+    error.Stats[0] = 2.0 * CalcAUC(&samples, &executor) - 1.0;
+    error.Stats[1] = 1.0;
+    return error;
+}
+
+TMetricHolder TNormalizedGini::Eval(
+    const TConstArrayRef<TConstArrayRef<double>> approx,
+    const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+    bool isExpApprox,
+    TConstArrayRef<float> target,
+    TConstArrayRef<float> weight,
+    TConstArrayRef<TQueryInfo> /*queriesInfo*/,
+    int begin,
+    int end,
+    OMPNPar::TLocalExecutor& executor
 ) const {
     Y_ASSERT(!isExpApprox);
     Y_ASSERT((approx.size() > 1) == IsMultiClass);
@@ -3541,6 +3856,16 @@ namespace {
                     return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
                 }
         TMetricHolder Eval(
+                const TVector<TVector<double>>& approx,
+                TConstArrayRef<float> target,
+                TConstArrayRef<float> weight,
+                TConstArrayRef<TQueryInfo> queriesInfo,
+                int begin,
+                int end,
+                OMPNPar::TLocalExecutor& executor) const override {
+                    return Eval(To2DConstArrayRef<double>(approx), /*approxDelta*/{}, /*isExpApprox*/false, target, weight, queriesInfo, begin, end, executor);
+                }
+        TMetricHolder Eval(
                 const TConstArrayRef<TConstArrayRef<double>> approx,
                 const TConstArrayRef<TConstArrayRef<double>> approxDelta,
                 bool isExpApprox,
@@ -3550,6 +3875,16 @@ namespace {
                 int begin,
                 int end,
                 NPar::TLocalExecutor& executor) const override;
+        TMetricHolder Eval(
+                const TConstArrayRef<TConstArrayRef<double>> approx,
+                const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+                bool isExpApprox,
+                TConstArrayRef<float> target,
+                TConstArrayRef<float> weight,
+                TConstArrayRef<TQueryInfo> queriesInfo,
+                int begin,
+                int end,
+                OMPNPar::TLocalExecutor& executor) const override;
         void GetBestValue(EMetricBestValue* valueType, float* bestValue) const override;
 
         private:
@@ -3694,6 +4029,103 @@ TMetricHolder TPRAUCMetric::Eval(
     return error;
 }
 
+TMetricHolder TPRAUCMetric::Eval(
+    const TConstArrayRef<TConstArrayRef<double>> approx,
+    const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+    bool isExpApprox,
+    TConstArrayRef<float> target,
+    TConstArrayRef<float> weight,
+    TConstArrayRef<TQueryInfo> /*queriesInfo*/,
+    int begin,
+    int end,
+    OMPNPar::TLocalExecutor& /*executor*/
+) const {
+    Y_ASSERT(!isExpApprox);
+    Y_ASSERT((approx.size() > 1) == IsMultiClass);
+    Y_ASSERT(approx[0].size() == target.size());
+
+    TMetricHolder error(2);
+    error.Stats[1] = 1;
+
+    int elemCount = end - begin;
+
+    struct Sample {
+        double approx;
+        float target;
+        float weight;
+    };
+
+    TVector<Sample> sortedSamples;
+    sortedSamples.reserve(elemCount);
+
+    const auto realApprox = [&](int idx) {
+        return approx[IsMultiClass ? PositiveClass : 0][idx]
+        + (approxDelta.empty() ? 0.0 : approxDelta[IsMultiClass ? PositiveClass : 0][idx]);
+    };
+    const auto realWeight = [&](int idx) {
+        return UseWeights && !weight.empty() ? weight[idx] : 1.0f;
+    };
+
+    for (int i = begin; i < end; ++i) {
+        sortedSamples.push_back({realApprox(i), target[i], realWeight(i)});
+    }
+
+    std::sort(sortedSamples.begin(), sortedSamples.end(), [](const Sample& l, const Sample& r) {return l.approx < r.approx;});
+
+    int curNegCount = 0;
+    double curTp = 0;
+    double curFp = 0;
+    double curFn = 0;
+
+    for (size_t i = 0; i < target.size(); ++i) {
+        if (sortedSamples[i].target == PositiveClass) {
+            curTp += sortedSamples[i].weight;
+        } else {
+            curFp += sortedSamples[i].weight;
+        }
+    }
+
+    CB_ENSURE(curTp > 0, "No element of a positive class");
+
+    double prevPrecision = 0;
+    double prevRecall = 1;
+    double& auc = error.Stats[0];
+
+    auto isApproxesEqual = [] (double approxL, double approxR) {
+        return Abs(approxL - approxR) < 1e-8;
+    };
+
+    while (curNegCount <= elemCount) {
+        double precision = (curTp == 0 && curFp == 0) ? 1 : curTp / (curTp + curFp + 0.0);
+        double recall = curTp / (curTp + curFn + 0.0);
+
+        auc += (prevRecall - recall) * (prevPrecision + precision) / 2;
+
+        prevRecall = recall;
+        prevPrecision = precision;
+
+        auto moveOneBorder = [&]() {
+            if (curNegCount < elemCount) {
+                auto curWeight = sortedSamples[curNegCount].weight;
+                if (sortedSamples[curNegCount].target == PositiveClass) {
+                    curTp -= curWeight;
+                    curFn += curWeight;
+                } else {
+                    curFp -= curWeight;
+                }
+            }
+            ++curNegCount;
+        };
+
+        moveOneBorder();
+        while (curNegCount < elemCount && isApproxesEqual(sortedSamples[curNegCount - 1].approx, sortedSamples[curNegCount].approx)) {
+            moveOneBorder();
+        }
+    }
+
+    return error;
+}
+
 void TPRAUCMetric::GetBestValue(EMetricBestValue* valueType, float*) const {
     *valueType = EMetricBestValue::Max;
 }
@@ -3714,6 +4146,15 @@ namespace {
             NPar::TLocalExecutor& executor
         ) const override;
         TMetricHolder Eval(
+            const TVector<TVector<double>>& approx,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
+        ) const override;
+        TMetricHolder Eval(
             const TConstArrayRef<TConstArrayRef<double>> approx,
             const TConstArrayRef<TConstArrayRef<double>> approxDelta,
             bool isExpApprox,
@@ -3723,6 +4164,23 @@ namespace {
             int begin,
             int end,
             NPar::TLocalExecutor& executor
+        ) const override {
+            CB_ENSURE(!isExpApprox && approxDelta.empty(), "Custom metrics do not support approx deltas and exponentiated approxes");
+            TVector<TVector<double>> localApprox;
+            ResizeRank2(approx.size(), approx[0].size(), localApprox);
+            AssignRank2(MakeArrayRef(approx), &localApprox);
+            return Eval(localApprox, target, weight, queriesInfo, begin, end, executor);
+        }
+        TMetricHolder Eval(
+            const TConstArrayRef<TConstArrayRef<double>> approx,
+            const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+            bool isExpApprox,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
         ) const override {
             CB_ENSURE(!isExpApprox && approxDelta.empty(), "Custom metrics do not support approx deltas and exponentiated approxes");
             TVector<TVector<double>> localApprox;
@@ -3775,6 +4233,26 @@ TMetricHolder TCustomMetric::Eval(
     );
     return result;
 }
+
+TMetricHolder TCustomMetric::Eval(
+    const TVector<TVector<double>>& approx,
+    TConstArrayRef<float> target,
+    TConstArrayRef<float> weightIn,
+    TConstArrayRef<TQueryInfo> /*queriesInfo*/,
+    int begin,
+    int end,
+    OMPNPar::TLocalExecutor& /* executor */
+) const {
+    auto weight = UseWeights ? weightIn : TConstArrayRef<float>{};
+    TMetricHolder result = (*(Descriptor.EvalFunc))(approx, target, weight, begin, end, Descriptor.CustomData);
+    CB_ENSURE(
+        result.Stats.ysize() == 2,
+        "Custom metric evaluate() returned incorrect value."\
+        " Expected tuple of size 2, got tuple of size " << result.Stats.ysize() << "."
+    );
+    return result;
+}
+
 
 TString TCustomMetric::GetDescription() const {
     TString description = Descriptor.GetDescriptionFunc(Descriptor.CustomData);
@@ -3833,6 +4311,26 @@ namespace {
             );
         }
 
+        TMetricHolder Eval(
+            TConstArrayRef<TVector<double>> approx,
+            TConstArrayRef<TVector<double>> approxDelta,
+            TConstArrayRef<TConstArrayRef<float>> target,
+            TConstArrayRef<float> weight,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
+        ) const override {
+            CB_ENSURE(approxDelta.empty(), "Custom metrics do not support approx deltas and exponentiated approxes");
+            return Eval_(
+                approx,
+                target,
+                weight,
+                begin,
+                end,
+                executor
+            );
+        }
+
         TString GetDescription() const override;
         void GetBestValue(EMetricBestValue* valueType, float* bestValue) const override;
         double GetFinalError(const TMetricHolder& error) const override;
@@ -3854,6 +4352,15 @@ namespace {
             NPar::TLocalExecutor& executor
         ) const;
 
+        TMetricHolder Eval_(
+            TConstArrayRef<TVector<double>> approx,
+            TConstArrayRef<TConstArrayRef<float>> target,
+            TConstArrayRef<float> weight,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
+        ) const;
+
         TCustomMetricDescriptor Descriptor;
         TMap<TString, TString> Hints;
     };
@@ -3873,6 +4380,24 @@ TMetricHolder TMultiRegressionCustomMetric::Eval_(
     int begin,
     int end,
     NPar::TLocalExecutor& /*executor*/
+) const {
+    auto weight = UseWeights ? weightIn : TConstArrayRef<float>{};
+    TMetricHolder result = (*(Descriptor.EvalMultiregressionFunc))(approx, target, weight, begin, end, Descriptor.CustomData);
+    CB_ENSURE(
+        result.Stats.ysize() == 2,
+        "Custom metric evaluate() returned incorrect value."\
+        " Expected tuple of size 2, got tuple of size " << result.Stats.ysize() << "."
+    );
+    return result;
+}
+
+TMetricHolder TMultiRegressionCustomMetric::Eval_(
+    TConstArrayRef<TVector<double>> approx,
+    TConstArrayRef<TConstArrayRef<float>> target,
+    TConstArrayRef<float> weightIn,
+    int begin,
+    int end,
+    OMPNPar::TLocalExecutor& /*executor*/
 ) const {
     auto weight = UseWeights ? weightIn : TConstArrayRef<float>{};
     TMetricHolder result = (*(Descriptor.EvalMultiregressionFunc))(approx, target, weight, begin, end, Descriptor.CustomData);
@@ -3924,6 +4449,15 @@ namespace {
             NPar::TLocalExecutor& executor
         ) const override;
         TMetricHolder Eval(
+            const TVector<TVector<double>>& approx,
+            TConstArrayRef<float> target,
+            TConstArrayRef<float> weight,
+            TConstArrayRef<TQueryInfo> queriesInfo,
+            int begin,
+            int end,
+            OMPNPar::TLocalExecutor& executor
+        ) const override;
+        TMetricHolder Eval(
             const TConstArrayRef<TConstArrayRef<double>> /*approx*/,
             const TConstArrayRef<TConstArrayRef<double>> /*approxDelta*/,
             bool /*isExpApprox*/,
@@ -3933,6 +4467,22 @@ namespace {
             int /*begin*/,
             int /*end*/,
             NPar::TLocalExecutor& /*executor*/
+        ) const override {
+            CB_ENSURE(
+                false,
+                "User-defined per object metrics do not support approx deltas and exponentiated approxes");
+            return TMetricHolder();
+        }
+        TMetricHolder Eval(
+            const TConstArrayRef<TConstArrayRef<double>> /*approx*/,
+            const TConstArrayRef<TConstArrayRef<double>> /*approxDelta*/,
+            bool /*isExpApprox*/,
+            TConstArrayRef<float> /*target*/,
+            TConstArrayRef<float> /*weight*/,
+            TConstArrayRef<TQueryInfo> /*queriesInfo*/,
+            int /*begin*/,
+            int /*end*/,
+            OMPNPar::TLocalExecutor& /*executor*/
         ) const override {
             CB_ENSURE(
                 false,
@@ -3969,6 +4519,19 @@ TMetricHolder TUserDefinedPerObjectMetric::Eval(
     int /*begin*/,
     int /*end*/,
     NPar::TLocalExecutor& /*executor*/
+) const {
+    CB_ENSURE(false, "Not implemented for TUserDefinedPerObjectMetric metric.");
+    TMetricHolder metric(2);
+    return metric;
+}
+TMetricHolder TUserDefinedPerObjectMetric::Eval(
+    const TVector<TVector<double>>& /*approx*/,
+    TConstArrayRef<float> /*target*/,
+    TConstArrayRef<float> /*weight*/,
+    TConstArrayRef<TQueryInfo> /*queriesInfo*/,
+    int /*begin*/,
+    int /*end*/,
+    OMPNPar::TLocalExecutor& /*executor*/
 ) const {
     CB_ENSURE(false, "Not implemented for TUserDefinedPerObjectMetric metric.");
     TMetricHolder metric(2);
@@ -4956,14 +5519,14 @@ TVector<bool> GetSkipMetricOnTest(bool testHasTarget, const TVector<const IMetri
     return result;
 }
 
-
+template <typename LocalExecutorType>
 TMetricHolder EvalErrors(
         const TVector<TVector<double>>& approx,
         TConstArrayRef<float> target,
         TConstArrayRef<float> weight,
         TConstArrayRef<TQueryInfo> queriesInfo,
         const IMetric& error,
-        NPar::TLocalExecutor* localExecutor
+        LocalExecutorType* localExecutor
 ) {
     if (error.GetErrorType() == EErrorType::PerObjectError) {
         int begin = 0, end = target.size();
@@ -4975,8 +5538,26 @@ TMetricHolder EvalErrors(
         return error.Eval(approx, target, weight, queriesInfo, queryStartIndex, queryEndIndex, *localExecutor);
     }
 }
+template
+TMetricHolder EvalErrors<NPar::TLocalExecutor>(
+        const TVector<TVector<double>>& approx,
+        TConstArrayRef<float> target,
+        TConstArrayRef<float> weight,
+        TConstArrayRef<TQueryInfo> queriesInfo,
+        const IMetric& error,
+        NPar::TLocalExecutor* localExecutor
+);
+template
+TMetricHolder EvalErrors<OMPNPar::TLocalExecutor>(
+        const TVector<TVector<double>>& approx,
+        TConstArrayRef<float> target,
+        TConstArrayRef<float> weight,
+        TConstArrayRef<TQueryInfo> queriesInfo,
+        const IMetric& error,
+        OMPNPar::TLocalExecutor* localExecutor
+);
 
-
+template <typename LocalExecutorType>
 TMetricHolder EvalErrors(
         const TConstArrayRef<TConstArrayRef<double>> approx,
         const TConstArrayRef<TConstArrayRef<double>> approxDelta,
@@ -4985,7 +5566,7 @@ TMetricHolder EvalErrors(
         TConstArrayRef<float> weight,
         TConstArrayRef<TQueryInfo> queriesInfo,
         const IMetric& error,
-        NPar::TLocalExecutor* localExecutor
+        LocalExecutorType* localExecutor
 ) {
     if (error.GetErrorType() == EErrorType::PerObjectError) {
         int begin = 0, end = target.size();
@@ -4997,8 +5578,30 @@ TMetricHolder EvalErrors(
         return error.Eval(approx, approxDelta, isExpApprox, target, weight, queriesInfo, queryStartIndex, queryEndIndex, *localExecutor);
     }
 }
+template
+TMetricHolder EvalErrors<NPar::TLocalExecutor>(
+        const TConstArrayRef<TConstArrayRef<double>> approx,
+        const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+        bool isExpApprox,
+        TConstArrayRef<float> target,
+        TConstArrayRef<float> weight,
+        TConstArrayRef<TQueryInfo> queriesInfo,
+        const IMetric& error,
+        NPar::TLocalExecutor* localExecutor
+);
+template
+TMetricHolder EvalErrors<OMPNPar::TLocalExecutor>(
+        const TConstArrayRef<TConstArrayRef<double>> approx,
+        const TConstArrayRef<TConstArrayRef<double>> approxDelta,
+        bool isExpApprox,
+        TConstArrayRef<float> target,
+        TConstArrayRef<float> weight,
+        TConstArrayRef<TQueryInfo> queriesInfo,
+        const IMetric& error,
+        OMPNPar::TLocalExecutor* localExecutor
+);
 
-
+template <typename LocalExecutorType>
 TMetricHolder EvalErrors(
         const TVector<TVector<double>>& approx,
         const TVector<TVector<double>>& approxDelta,
@@ -5007,7 +5610,7 @@ TMetricHolder EvalErrors(
         TConstArrayRef<float> weight,
         TConstArrayRef<TQueryInfo> queriesInfo,
         const IMetric& error,
-        NPar::TLocalExecutor* localExecutor
+        LocalExecutorType* localExecutor
 ) {
     if (const auto multiMetric = dynamic_cast<const TMultiRegressionMetric*>(&error)) {
         CB_ENSURE(!isExpApprox, "Exponentiated approxes are not supported for multi-regression");
@@ -5017,6 +5620,29 @@ TMetricHolder EvalErrors(
         return EvalErrors(To2DConstArrayRef<double>(approx), To2DConstArrayRef<double>(approxDelta), isExpApprox, target[0], weight, queriesInfo, error, localExecutor);
     }
 }
+
+template
+TMetricHolder EvalErrors<NPar::TLocalExecutor>(
+        const TVector<TVector<double>>& approx,
+        const TVector<TVector<double>>& approxDelta,
+        bool isExpApprox,
+        TConstArrayRef<TConstArrayRef<float>> target,
+        TConstArrayRef<float> weight,
+        TConstArrayRef<TQueryInfo> queriesInfo,
+        const IMetric& error,
+        NPar::TLocalExecutor* localExecutor
+);
+template
+TMetricHolder EvalErrors<OMPNPar::TLocalExecutor>(
+        const TVector<TVector<double>>& approx,
+        const TVector<TVector<double>>& approxDelta,
+        bool isExpApprox,
+        TConstArrayRef<TConstArrayRef<float>> target,
+        TConstArrayRef<float> weight,
+        TConstArrayRef<TQueryInfo> queriesInfo,
+        const IMetric& error,
+        OMPNPar::TLocalExecutor* localExecutor
+);
 
 void CheckMetrics(const TVector<THolder<IMetric>>& metrics, const ELossFunction modelLoss) {
     CB_ENSURE(!metrics.empty(), "No metrics specified for evaluation");

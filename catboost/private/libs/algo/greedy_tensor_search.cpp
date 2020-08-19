@@ -640,7 +640,7 @@ static void CalcBestScore(
         }
     }
 
-    ctx->LocalExecutor->ExecRange(
+    ctx->OMPLocalExecutor->ExecRange(
         [&] (int taskIdx) {
             TCandidatesContext& candidatesContext = (*candidatesContexts)[tasks[taskIdx].first];
             TCandidateList& candList = candidatesContext.CandidateList;
@@ -687,7 +687,7 @@ for(int oneCandidate = 0; oneCandidate < candidate.Candidates.ysize(); ++oneCand
                         ctx->UseTreeLevelCaching(),
                         currTreeMonotonicConstraints,
                         monotonicConstraints,
-                        ctx->LocalExecutor,
+                        ctx->OMPLocalExecutor,
                         &ctx->PrevTreeLevelStats,
                         /*stats3d*/nullptr,
                         /*pairwiseStats*/nullptr,
@@ -739,7 +739,7 @@ static void DoBootstrap(
             ctx->LearnProgress->LeafValues,
             fold,
             &ctx->SampledDocs,
-            ctx->LocalExecutor,
+            ctx->OMPLocalExecutor,
             &ctx->LearnProgress->Rand,
             IsLeafwiseScoringApplicable(ctx->Params),
             leavesCount);
@@ -750,7 +750,7 @@ static void DoBootstrap(
                     ctx->Params.BoostingOptions->LearningRate,
                     ctx->LearnProgress->Rand.GenRand(),
                     &bodyTail.WeightedDerivatives,
-                    ctx->LocalExecutor
+                    ctx->OMPLocalExecutor
                 );
             }
         }
@@ -775,7 +775,7 @@ static void CalcBestScoreLeafwise(
         }
     }
 
-    ctx->LocalExecutor->ExecRange(
+    ctx->OMPLocalExecutor->ExecRange(
         [&] (int taskIdx) {
             TCandidatesContext& candidatesContext = (*candidatesContexts)[tasks[taskIdx].first];
             TCandidateList& candList = candidatesContext.CandidateList;
@@ -1181,18 +1181,18 @@ static TSplitTree GreedyTensorSearchOblivious(
                 curDepth + 1,
                 *fold,
                 indices,
-                ctx->LocalExecutor);
+                ctx->OMPLocalExecutor);
             if (isSamplingPerTree) {
                 if (useLeafwiseScoring) {
-                    ctx->SampledDocs.UpdateIndicesInLeafwiseSortedFold(*indices, ctx->LocalExecutor);
+                    ctx->SampledDocs.UpdateIndicesInLeafwiseSortedFold(*indices, ctx->OMPLocalExecutor);
                 } else {
-                    ctx->SampledDocs.UpdateIndices(*indices, ctx->LocalExecutor);
+                    ctx->SampledDocs.UpdateIndices(*indices, ctx->OMPLocalExecutor);
                 }
                 if (ctx->UseTreeLevelCaching() && !useLeafwiseScoring) {
                     ctx->SmallestSplitSideDocs.SelectSmallestSplitSide(
                         curDepth + 1,
                         ctx->SampledDocs,
-                        ctx->LocalExecutor);
+                        ctx->OMPLocalExecutor);
                 }
             }
         } else {

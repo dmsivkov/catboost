@@ -245,7 +245,7 @@ static TConstArrayRef<ui8> GetCtrValues(const TSplit& split, const TOnlineCTR& c
     return ctr.Feature[split.Ctr.CtrIdx][split.Ctr.TargetBorderIdx][split.Ctr.PriorIdx];
 }
 
-
+template <typename LocalExecutorType>
 void GetObjectsDataAndIndexing(
     const TTrainingDataProviders& trainingData,
     const TFold& fold,
@@ -253,7 +253,7 @@ void GetObjectsDataAndIndexing(
     bool isOnline,
     ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
     TIndexedSubsetCache* indexedSubsetCache,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TQuantizedObjectsDataProviderPtr* objectsData,
     const ui32** columnIndexing // can return nullptr
 ) {
@@ -306,8 +306,32 @@ void GetObjectsDataAndIndexing(
 
     }
 }
+template
+void GetObjectsDataAndIndexing<NPar::TLocalExecutor>(
+    const TTrainingDataProviders& trainingData,
+    const TFold& fold,
+    bool isEstimated,
+    bool isOnline,
+    ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
+    TIndexedSubsetCache* indexedSubsetCache,
+    NPar::TLocalExecutor* localExecutor,
+    TQuantizedObjectsDataProviderPtr* objectsData,
+    const ui32** columnIndexing // can return nullptr
+);
+template
+void GetObjectsDataAndIndexing<OMPNPar::TLocalExecutor>(
+    const TTrainingDataProviders& trainingData,
+    const TFold& fold,
+    bool isEstimated,
+    bool isOnline,
+    ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
+    TIndexedSubsetCache* indexedSubsetCache,
+    OMPNPar::TLocalExecutor* localExecutor,
+    TQuantizedObjectsDataProviderPtr* objectsData,
+    const ui32** columnIndexing // can return nullptr
+);
 
-
+template <typename LocalExecutorType>
 static void UpdateIndices(
     bool initIndices,
     TConstArrayRef<TUpdateIndicesForSplitParams> params,
@@ -315,7 +339,7 @@ static void UpdateIndices(
     const TTrainingDataProviders& trainingData,
     const TFold& fold,
     ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TArrayRef<TIndexType> indices) {
 
     TIndexType defaultIndexValue = 0;
@@ -425,7 +449,7 @@ static void UpdateIndices(
         TIndexRange<ui32>(SafeIntegerCast<ui32>(indices.size())),
         blockSize);
 
-    NPar::ParallelFor(
+    common::ParallelFor(
         *localExecutor,
         0,
         SafeIntegerCast<int>(indexRanges.RangesCount()),
@@ -448,13 +472,14 @@ static void UpdateIndices(
         });
 }
 
+template <typename LocalExecutorType>
 void SetPermutedIndices(
     const TSplit& split,
     const TTrainingDataProviders& trainingData,
     int curDepth,
     const TFold& fold,
     TVector<TIndexType>* indices,
-    NPar::TLocalExecutor* localExecutor) {
+    LocalExecutorType* localExecutor) {
 
     CB_ENSURE(curDepth > 0);
 
@@ -475,6 +500,22 @@ void SetPermutedIndices(
         localExecutor,
         *indices);
 }
+template
+void SetPermutedIndices<NPar::TLocalExecutor>(
+    const TSplit& split,
+    const TTrainingDataProviders& trainingData,
+    int curDepth,
+    const TFold& fold,
+    TVector<TIndexType>* indices,
+    NPar::TLocalExecutor* localExecutor);
+template
+void SetPermutedIndices<OMPNPar::TLocalExecutor>(
+    const TSplit& split,
+    const TTrainingDataProviders& trainingData,
+    int curDepth,
+    const TFold& fold,
+    TVector<TIndexType>* indices,
+    OMPNPar::TLocalExecutor* localExecutor);
 
 TVector<bool> GetIsLeafEmpty(int curDepth, const TVector<TIndexType>& indices) {
     TVector<bool> isLeafEmpty(1ull << curDepth, true);
@@ -542,6 +583,7 @@ static TVector<const TOnlineCTR*> GetOnlineCtrs(const TFold& fold, const TVarian
     }
 }
 
+template <typename LocalExecutorType>
 static void BuildIndicesForDataset(
     const TSplitTree& tree,
     const TTrainingDataProviders& trainingData,
@@ -550,7 +592,7 @@ static void BuildIndicesForDataset(
     const TVector<const TOnlineCTR*>& onlineCtrs,
     ui32 docOffset,
     ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TIndexType* indices) {
 
     TVector<TUpdateIndicesForSplitParams> params;
@@ -571,6 +613,7 @@ static void BuildIndicesForDataset(
         MakeArrayRef(indices, sampleCount));
 }
 
+template <typename LocalExecutorType>
 static void BuildIndicesForDataset(
     const TVariant<TSplitTree, TNonSymmetricTreeStructure>& treeVariant,
     const TTrainingDataProviders& trainingData,
@@ -579,7 +622,7 @@ static void BuildIndicesForDataset(
     const TVector<const TOnlineCTR*>& onlineCtrs,
     ui32 docOffset,
     ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TIndexType* indices) {
 
     const auto buildIndices = [&](auto tree) {
@@ -602,13 +645,13 @@ static void BuildIndicesForDataset(
     }
 }
 
-
+template <typename LocalExecutorType>
 TVector<TIndexType> BuildIndices(
     const TFold& fold,
     const TVariant<TSplitTree, TNonSymmetricTreeStructure>& tree,
     const TTrainingDataProviders& trainingData,
     EBuildIndicesDataParts dataParts,
-    NPar::TLocalExecutor* localExecutor) {
+    LocalExecutorType* localExecutor) {
 
     ui32 learnSampleCount
         = (dataParts == EBuildIndicesDataParts::TestOnly) ? 0 : trainingData.Learn->GetObjectCount();
@@ -651,6 +694,21 @@ TVector<TIndexType> BuildIndices(
     }
     return indices;
 }
+template
+TVector<TIndexType> BuildIndices<NPar::TLocalExecutor>(
+    const TFold& fold,
+    const TVariant<TSplitTree, TNonSymmetricTreeStructure>& tree,
+    const TTrainingDataProviders& trainingData,
+    EBuildIndicesDataParts dataParts,
+    NPar::TLocalExecutor* localExecutor);
+
+template
+TVector<TIndexType> BuildIndices<OMPNPar::TLocalExecutor>(
+    const TFold& fold,
+    const TVariant<TSplitTree, TNonSymmetricTreeStructure>& tree,
+    const TTrainingDataProviders& trainingData,
+    EBuildIndicesDataParts dataParts,
+    OMPNPar::TLocalExecutor* localExecutor);
 
 TVector<TIndexType> BuildIndicesForBinTree(
     const TFullModel& model,

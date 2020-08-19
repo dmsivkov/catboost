@@ -10,18 +10,19 @@
 
 using NMetrics::TBinClassSample;
 
+template <typename LocalExecutorType>
 double CalcMuAuc(
     const TVector<TVector<double>>& approx,
     const TConstArrayRef<float>& target,
     const TConstArrayRef<float>& weight,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     const TMaybe<TVector<TVector<double>>>& misclassCostMatrix
 ) {
     ui32 threadCount = Min((ui32)localExecutor->GetThreadCount() + 1, (ui32)target.size());
     NCB::TEqualRangesGenerator<ui32> generator({0, (ui32)target.size()}, threadCount);
     TVector<TVector<double>> dotProducts(approx);
     ui32 classCount = approx.size();
-    NPar::ParallelFor(
+    common::ParallelFor(
         *localExecutor,
         0,
         threadCount,
@@ -88,6 +89,22 @@ double CalcMuAuc(
     }
     return (2.0 * result) / (classCount * (classCount - 1));
 }
+template
+double CalcMuAuc<NPar::TLocalExecutor>(
+    const TVector<TVector<double>>& approx,
+    const TConstArrayRef<float>& target,
+    const TConstArrayRef<float>& weight,
+    NPar::TLocalExecutor* localExecutor,
+    const TMaybe<TVector<TVector<double>>>& misclassCostMatrix
+);
+template
+double CalcMuAuc<OMPNPar::TLocalExecutor>(
+    const TVector<TVector<double>>& approx,
+    const TConstArrayRef<float>& target,
+    const TConstArrayRef<float>& weight,
+    OMPNPar::TLocalExecutor* localExecutor,
+    const TMaybe<TVector<TVector<double>>>& misclassCostMatrix
+);
 
 double CalcMuAuc(
     const TVector<TVector<double>>& approx,

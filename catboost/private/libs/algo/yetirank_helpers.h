@@ -14,6 +14,7 @@ namespace NPar {
     class TLocalExecutor;
 }
 
+template <typename LocalExecutorType>
 void UpdatePairsForYetiRank(
     TConstArrayRef<double> approxes,
     TConstArrayRef<float> relevances,
@@ -22,15 +23,16 @@ void UpdatePairsForYetiRank(
     int queryBegin,
     int queryEnd,
     TVector<TQueryInfo>* queriesInfo,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 );
 
+template <typename LocalExecutorType>
 void YetiRankRecalculation(
     const TFold& ff,
     const TFold::TBodyTail& bt,
     const NCatboostOptions::TCatBoostOptions& params,
     ui64 randomSeed,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TVector<TQueryInfo>* recalculatedQueriesInfo,
     TVector<float>* recalculatedPairwiseWeights
 );

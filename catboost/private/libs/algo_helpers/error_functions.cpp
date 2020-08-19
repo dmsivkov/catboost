@@ -625,6 +625,29 @@ void TStochasticRankError::CalcDersForQueries(
     });
 }
 
+void TStochasticRankError::CalcDersForQueries(
+    int queryStartIndex,
+    int queryEndIndex,
+    const TVector<double>& approxes,
+    const TVector<float>& target,
+    const TVector<float>& /*weights*/,
+    const TVector<TQueryInfo>& queriesInfo,
+    TArrayRef<TDers> ders,
+    ui64 randomSeed,
+    OMPNPar::TLocalExecutor* localExecutor
+) const {
+    auto start = queriesInfo[queryStartIndex].Begin;
+    OMPNPar::ParallelFor(*localExecutor, queryStartIndex, queryEndIndex, [&](int queryIndex) {
+        auto begin = queriesInfo[queryIndex].Begin;
+        auto end = queriesInfo[queryIndex].End;
+        auto count = end - begin;
+        TArrayRef<TDers> queryDers(ders.data() + begin - start, count);
+        TConstArrayRef<double> queryApproxes(approxes.data() + begin, count);
+        TConstArrayRef<float> queryTargets(target.data() + begin, count);
+        CalcDersForSingleQuery(queryApproxes, queryTargets, randomSeed + queryIndex, queryDers);
+    });
+}
+
 void TStochasticRankError::CalcDersForSingleQuery(
     TConstArrayRef<double> approxes,
     TConstArrayRef<float> targets,

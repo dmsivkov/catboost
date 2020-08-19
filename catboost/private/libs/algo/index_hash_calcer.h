@@ -27,6 +27,7 @@ struct TProjection;
 ///                                       Faster, but not compatible with current model format.
 ///                                       So, enabled only during training, disabled for FinalCtr.
 /// @param begin, @param end - Result range
+template <typename LocalExecutorType>
 void CalcHashes(
     const TProjection& proj,
     const NCB::TQuantizedForCPUObjectsDataProvider& objectsDataProvider,
@@ -34,7 +35,7 @@ void CalcHashes(
     const NCB::TPerfectHashedToHashedCatValuesMap* perfectHashedToHashedCatValuesMap,
     ui64* begin,
     ui64* end,
-    NPar::TLocalExecutor* localExecutor);
+    LocalExecutorType* localExecutor);
 
 
 /// Compute reindexHash and reindex hash values in range [begin,end).
