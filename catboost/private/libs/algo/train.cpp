@@ -41,9 +41,9 @@ static void UpdateLearningFold(
     TFold* fold,
     TLearnContext* ctx
 ) {
-    TUnbufferedFileOutput file("/nfs/inn/proj/numerics1/Users/kshvets/catboost_for_private_repo/catboost_optimizations/catboost/pytest/_cpp_test.txt");
+/*    TUnbufferedFileOutput file("/nfs/inn/proj/numerics1/Users/kshvets/catboost_for_private_repo/catboost_optimizations/catboost/pytest/_cpp_test.txt");
     file.Write("UpdateLearningFold1\n",20);
-
+*/
     TVector<TVector<TVector<double>>> approxDelta;
 
     CalcApproxForLeafStruct(
@@ -55,7 +55,7 @@ static void UpdateLearningFold(
         ctx,
         &approxDelta
     );
-    file.Write("UpdateLearningFold2\n",20);
+//    file.Write("UpdateLearningFold2\n",20);
 
     if (error.GetIsExpApprox()) {
         UpdateBodyTailApprox</*StoreExpApprox*/true>(
@@ -72,7 +72,7 @@ static void UpdateLearningFold(
             fold
         );
     }
-    file.Write("UpdateLearningFold3\n",20);
+//    file.Write("UpdateLearningFold3\n",20);
 
 }
 

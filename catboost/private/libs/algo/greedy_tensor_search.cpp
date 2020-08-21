@@ -1470,7 +1470,7 @@ static TNonSymmetricTreeStructure GreedyTensorSearchDepthwise(
                 data,
                 subsetsForLeafs[leafToSplit],
                 *fold,
-                ctx->LocalExecutor,
+                ctx->OMPLocalExecutor,
                 indicesRef
             );
 
@@ -1485,7 +1485,7 @@ static TNonSymmetricTreeStructure GreedyTensorSearchDepthwise(
                 splittedLeafs,
                 nextLevelLeafs,
                 *indices,
-                ctx->LocalExecutor);
+                ctx->OMPLocalExecutor);
         }
         curLevelLeafs = std::move(nextLevelLeafs);
 
