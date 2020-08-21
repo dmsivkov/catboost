@@ -32,6 +32,7 @@
 #include <util/generic/xrange.h>
 #include <util/string/builder.h>
 #include <util/system/mem_info.h>
+#include <util/stream/file.h>
 
 
 using namespace NCB;
@@ -63,9 +64,10 @@ void TrimOnlineCTRcache(const TVector<TFold*>& folds) {
     }
 }
 
+template <typename LocalExecutorType>
 static double CalcDerivativesStDevFromZeroOrderedBoosting(
     const TFold& fold,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     double sum2 = 0;
     size_t count = 0;
@@ -83,10 +85,21 @@ static double CalcDerivativesStDevFromZeroOrderedBoosting(
     Y_ASSERT(count > 0);
     return sqrt(sum2 / count);
 }
-
-static double CalcDerivativesStDevFromZeroPlainBoosting(
+template
+double CalcDerivativesStDevFromZeroOrderedBoosting<NPar::TLocalExecutor>(
     const TFold& fold,
     NPar::TLocalExecutor* localExecutor
+);
+template
+double CalcDerivativesStDevFromZeroOrderedBoosting<OMPNPar::TLocalExecutor>(
+    const TFold& fold,
+    OMPNPar::TLocalExecutor* localExecutor
+);
+
+template <typename LocalExecutorType>
+static double CalcDerivativesStDevFromZeroPlainBoosting(
+    const TFold& fold,
+    LocalExecutorType* localExecutor
 ) {
     Y_ASSERT(fold.BodyTailArr.size() == 1);
     Y_ASSERT(fold.BodyTailArr.front().WeightedDerivatives.size() > 0);
@@ -100,11 +113,22 @@ static double CalcDerivativesStDevFromZeroPlainBoosting(
 
     return sqrt(sum2 / weightedDerivatives.front().size());
 }
+template
+double CalcDerivativesStDevFromZeroPlainBoosting<NPar::TLocalExecutor>(
+    const TFold& fold,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+double CalcDerivativesStDevFromZeroPlainBoosting<OMPNPar::TLocalExecutor>(
+    const TFold& fold,
+    OMPNPar::TLocalExecutor* localExecutor
+);
 
+template <typename LocalExecutorType>
 static double CalcDerivativesStDevFromZero(
     const TFold& fold,
     const EBoostingType boosting,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     switch (boosting) {
         case EBoostingType::Ordered:
@@ -114,7 +138,18 @@ static double CalcDerivativesStDevFromZero(
     }
     Y_UNREACHABLE();
 }
-
+template
+double CalcDerivativesStDevFromZero<NPar::TLocalExecutor>(
+    const TFold& fold,
+    const EBoostingType boosting,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+double CalcDerivativesStDevFromZero<OMPNPar::TLocalExecutor>(
+    const TFold& fold,
+    const EBoostingType boosting,
+    OMPNPar::TLocalExecutor* localExecutor
+);
 static double CalcDerivativesStDevFromZeroMultiplier(int learnSampleCount, double modelLength) {
     double modelExpLength = log(static_cast<double>(learnSampleCount));
     double modelLeft = exp(modelExpLength - modelLength);
@@ -837,7 +872,7 @@ static double CalcScoreStDev(
     TLearnContext* ctx) {
 
     const double derivativesStDevFromZero = ctx->Params.SystemOptions->IsSingleHost()
-        ? CalcDerivativesStDevFromZero(fold, ctx->Params.BoostingOptions->BoostingType, ctx->LocalExecutor)
+        ? CalcDerivativesStDevFromZero(fold, ctx->Params.BoostingOptions->BoostingType, ctx->OMPLocalExecutor)
         : MapCalcDerivativesStDevFromZero(learnSampleCount, ctx);
     return ctx->Params.ObliviousTreeOptions->RandomStrength
         * derivativesStDevFromZero
@@ -1244,7 +1279,6 @@ static TNonSymmetricTreeStructure GreedyTensorSearchLossguide(
     TVector<TIndexType>* indices,
     TFold* fold,
     TLearnContext* ctx) {
-
     Y_ASSERT(IsSamplingPerTree(ctx->Params.ObliviousTreeOptions));
 
     TNonSymmetricTreeStructure currentStructure;
@@ -1327,7 +1361,7 @@ static TNonSymmetricTreeStructure GreedyTensorSearchLossguide(
             data,
             subsetsForLeafs[splittedNodeIdx],
             *fold,
-            ctx->LocalExecutor,
+            ctx->OMPLocalExecutor,
             indicesRef
         );
 
@@ -1342,7 +1376,7 @@ static TNonSymmetricTreeStructure GreedyTensorSearchLossguide(
             leftChildIdx,
             rightChildIdx,
             *indices,
-            ctx->LocalExecutor);
+            ctx->OMPLocalExecutor);
         const int newDepth = leafDepth[splittedNodeIdx] + 1;
         leafDepth[leftChildIdx] = newDepth;
         leafDepth[rightChildIdx] = newDepth;
@@ -1351,7 +1385,8 @@ static TNonSymmetricTreeStructure GreedyTensorSearchLossguide(
         findBestCandidate(leftChildIdx);
         findBestCandidate(rightChildIdx);
     }
-
+/*    TUnbufferedFileOutput file("/nfs/inn/proj/numerics1/Users/kshvets/catboost_for_private_repo/catboost_optimizations/catboost/pytest/_cpp_test.txt");
+    file.Write("GreedyTensorSearchLossguide finished\n",37);*/
     return currentStructure;
 }
 
@@ -1486,7 +1521,6 @@ void GreedyTensorSearch(
             ctx->PrevTreeLevelStats.GarbageCollect();
         }
     }
-
     const auto growPolicy = ctx->Params.ObliviousTreeOptions.Get().GrowPolicy;
     switch(growPolicy) {
         case EGrowPolicy::SymmetricTree:

@@ -19,7 +19,7 @@
 #include <library/cpp/threading/local_executor/local_executor.h>
 
 #include <functional>
-
+#include <util/stream/file.h>
 
 using namespace NCB;
 
@@ -594,14 +594,15 @@ static void BuildIndicesForDataset(
     ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
     LocalExecutorType* localExecutor,
     TIndexType* indices) {
-
+    TUnbufferedFileOutput file("/nfs/inn/proj/numerics1/Users/kshvets/catboost_for_private_repo/catboost_optimizations/catboost/pytest/_cpp_test4.txt");
+    file.Write("BuildIndicesForDataset1\n",23);
     TVector<TUpdateIndicesForSplitParams> params;
     params.reserve(tree.GetDepth());
-
+    file.Write("BuildIndicesForDataset2\n",23);
     for (auto splitIdx : xrange(tree.GetDepth())) {
         params.push_back({(ui32)splitIdx, tree.Splits[splitIdx], onlineCtrs[splitIdx]});
     }
-
+    file.Write("BuildIndicesForDataset3\n",23);
     UpdateIndices(
         /*initIndices*/ true,
         params,
@@ -611,6 +612,7 @@ static void BuildIndicesForDataset(
         objectSubsetIdx,
         localExecutor,
         MakeArrayRef(indices, sampleCount));
+    file.Write("BuildIndicesForDataset4\n",23);
 }
 
 template <typename LocalExecutorType>
@@ -624,6 +626,8 @@ static void BuildIndicesForDataset(
     ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
     LocalExecutorType* localExecutor,
     TIndexType* indices) {
+    TUnbufferedFileOutput file("/nfs/inn/proj/numerics1/Users/kshvets/catboost_for_private_repo/catboost_optimizations/catboost/pytest/_cpp_test5.txt");
+    file.Write("BuildIndicesForDataset1\n",24);
 
     const auto buildIndices = [&](auto tree) {
         BuildIndicesForDataset(
@@ -637,10 +641,15 @@ static void BuildIndicesForDataset(
             localExecutor,
             indices);
     };
+    file.Write("BuildIndicesForDataset2\n",24);
 
     if (HoldsAlternative<TSplitTree>(treeVariant)) {
+        file.Write("BuildIndicesForDataset3!\n",24);
+
         buildIndices(Get<TSplitTree>(treeVariant));
     } else {
+        file.Write("BuildIndicesForDataset3@\n",24);
+
         buildIndices(Get<TNonSymmetricTreeStructure>(treeVariant));
     }
 }
@@ -652,18 +661,20 @@ TVector<TIndexType> BuildIndices(
     const TTrainingDataProviders& trainingData,
     EBuildIndicesDataParts dataParts,
     LocalExecutorType* localExecutor) {
-
+    TUnbufferedFileOutput file("/nfs/inn/proj/numerics1/Users/kshvets/catboost_for_private_repo/catboost_optimizations/catboost/pytest/_cpp_test3.txt");
+    file.Write("BuildIndices1\n",14);
     ui32 learnSampleCount
         = (dataParts == EBuildIndicesDataParts::TestOnly) ? 0 : trainingData.Learn->GetObjectCount();
     ui32 tailSampleCount
         = (dataParts == EBuildIndicesDataParts::LearnOnly) ? 0 : trainingData.GetTestSampleCount();
 
     const TVector<const TOnlineCTR*>& onlineCtrs = GetOnlineCtrs(fold, tree);
-
+    file.Write("BuildIndices2\n",14);
     TVector<TIndexType> indices;
     indices.yresize(learnSampleCount + tailSampleCount);
-
+    file.Write("BuildIndices3\n",14);
     if (dataParts != EBuildIndicesDataParts::TestOnly) {
+    file.Write("BuildIndices4\n",14);
         BuildIndicesForDataset(
             tree,
             trainingData,
@@ -692,6 +703,7 @@ TVector<TIndexType> BuildIndices(
             docOffset += testSet.GetObjectCount();
         }
     }
+    file.Write("BuildIndices5\n",14);
     return indices;
 }
 template

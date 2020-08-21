@@ -157,13 +157,13 @@ std::function<bool(ui32)> BuildNodeSplitFunction(
         }
     }
 }
-
+template <typename LocalExecutorType>
 void UpdateIndices(
     const TSplitNode& node,
     const TTrainingDataProviders& trainingData,
     const TIndexedSubset<ui32>& docsSubset,
     const TFold& fold,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TArrayRef<TIndexType> indicesRef
 ) {
     TQuantizedObjectsDataProviderPtr objectsDataProvider;
@@ -210,10 +210,29 @@ void UpdateIndices(
         },
         0,
         blockCount,
-        NPar::TLocalExecutor::WAIT_COMPLETE
+        LocalExecutorType::WAIT_COMPLETE
     );
 }
+template
+void UpdateIndices<NPar::TLocalExecutor>(
+    const TSplitNode& node,
+    const TTrainingDataProviders& trainingData,
+    const TIndexedSubset<ui32>& docsSubset,
+    const TFold& fold,
+    NPar::TLocalExecutor* localExecutor,
+    TArrayRef<TIndexType> indicesRef
+);
+template
+void UpdateIndices<OMPNPar::TLocalExecutor>(
+    const TSplitNode& node,
+    const TTrainingDataProviders& trainingData,
+    const TIndexedSubset<ui32>& docsSubset,
+    const TFold& fold,
+    OMPNPar::TLocalExecutor* localExecutor,
+    TArrayRef<TIndexType> indicesRef
+);
 
+template <typename LocalExecutorType>
 void BuildIndicesForDataset(
     const TNonSymmetricTreeStructure& tree,
     const TTrainingDataProviders& trainingData,
@@ -222,7 +241,7 @@ void BuildIndicesForDataset(
     const TVector<const TOnlineCTR*>& onlineCtrs,
     ui32 docOffset,
     ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TIndexType* indices) {
 
     TIndexedSubsetCache indexedSubsetCache;
@@ -273,5 +292,28 @@ void BuildIndicesForDataset(
         },
         0,
         sampleCount,
-        NPar::TLocalExecutor::WAIT_COMPLETE);
+        LocalExecutorType::WAIT_COMPLETE);
 }
+
+template
+void BuildIndicesForDataset<NPar::TLocalExecutor>(
+    const TNonSymmetricTreeStructure& tree,
+    const TTrainingDataProviders& trainingData,
+    const TFold& fold,
+    ui32 sampleCount,
+    const TVector<const TOnlineCTR*>& onlineCtrs,
+    ui32 docOffset,
+    ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
+    NPar::TLocalExecutor* localExecutor,
+    TIndexType* indices);
+template
+void BuildIndicesForDataset<OMPNPar::TLocalExecutor>(
+    const TNonSymmetricTreeStructure& tree,
+    const TTrainingDataProviders& trainingData,
+    const TFold& fold,
+    ui32 sampleCount,
+    const TVector<const TOnlineCTR*>& onlineCtrs,
+    ui32 docOffset,
+    ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
+    OMPNPar::TLocalExecutor* localExecutor,
+    TIndexType* indices);

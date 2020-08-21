@@ -261,12 +261,13 @@ public:
     template <typename LocalExecutorType>
     void UpdateIndices(const TVector<TIndexType>& indices, LocalExecutorType* localExecutor);
     // for lossguide
+    template <typename LocalExecutorType>
     void UpdateIndicesInLeafwiseSortedFoldForSingleLeaf(
         TIndexType leaf,
         TIndexType leftChildIdx,
         TIndexType rightChildIdx,
         const TVector<TIndexType>& indices,
-        NPar::TLocalExecutor* localExecutor);
+        LocalExecutorType* localExecutor);
     // for depthwise
     template <typename LocalExecutorType>
     void UpdateIndicesInLeafwiseSortedFold(

@@ -16,16 +16,17 @@ namespace NPar {
     class TLocalExecutor;
 }
 
-
+template <typename LocalExecutorType>
 void UpdateIndices(
     const TSplitNode& node,
     const NCB::TTrainingDataProviders& trainingData,
     const NCB::TIndexedSubset<ui32>& docsSubset,
     const TFold& fold,
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TArrayRef<TIndexType> indices
 );
 
+template <typename LocalExecutorType>
 void BuildIndicesForDataset(
     const TNonSymmetricTreeStructure& tree,
     const NCB::TTrainingDataProviders& trainingData,
@@ -34,5 +35,5 @@ void BuildIndicesForDataset(
     const TVector<const TOnlineCTR*>& onlineCtrs,
     ui32 docOffset,
     ui32 objectSubsetIdx, // 0 - learn, 1+ - test (subtract 1 for testIndex)
-    NPar::TLocalExecutor* localExecutor,
+    LocalExecutorType* localExecutor,
     TIndexType* indices);

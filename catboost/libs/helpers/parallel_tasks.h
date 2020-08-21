@@ -79,6 +79,32 @@ namespace NCB {
         );
         return result;
     }
+    template <typename TNumber>
+    inline TNumber L2NormSquared(
+        TConstArrayRef<TNumber> array,
+        OMPNPar::TLocalExecutor* localExecutor
+    ) {
+        TNumber result = 0;
+        NCB::MapMerge(
+            localExecutor,
+            TSimpleIndexRangesGenerator<int>(TIndexRange<int>(array.size()), /*blockSize*/10000),
+            /*mapFunc*/[&](NCB::TIndexRange<int> partIndexRange, TNumber* output) {
+                Y_ASSERT(!partIndexRange.Empty());
+                *output = DotProduct(
+                    array.data() + partIndexRange.Begin,
+                    array.data() + partIndexRange.Begin,
+                    partIndexRange.GetSize()
+                );
+            },
+            /*mergeFunc*/[](TNumber* output, TVector<TNumber>&& addVector) {
+                for (TNumber addItem : addVector) {
+                    *output += addItem;
+                }
+            },
+            &result
+        );
+        return result;
+    }
 
     template <typename TNumber, typename LocalExecutorType>
     inline void FillRank2(

@@ -1004,12 +1004,13 @@ void TCalcScoreFold::UpdateIndicesInLeafwiseSortedFoldForSingleLeafImpl(
 }
 
 // for lossguide
+template <typename LocalExecutorType>
 void TCalcScoreFold::UpdateIndicesInLeafwiseSortedFoldForSingleLeaf(
     TIndexType leaf,
     TIndexType leftChildIdx,
     TIndexType rightChildIdx,
     const TVector<TIndexType>& indices,
-    NPar::TLocalExecutor* localExecutor
+    LocalExecutorType* localExecutor
 ) {
     Y_ASSERT(GetBodyTailCount() == 1);
 
@@ -1024,6 +1025,22 @@ void TCalcScoreFold::UpdateIndicesInLeafwiseSortedFoldForSingleLeaf(
         localExecutor
     );
 }
+template
+void TCalcScoreFold::UpdateIndicesInLeafwiseSortedFoldForSingleLeaf<NPar::TLocalExecutor>(
+    TIndexType leaf,
+    TIndexType leftChildIdx,
+    TIndexType rightChildIdx,
+    const TVector<TIndexType>& indices,
+    NPar::TLocalExecutor* localExecutor
+);
+template
+void TCalcScoreFold::UpdateIndicesInLeafwiseSortedFoldForSingleLeaf<OMPNPar::TLocalExecutor>(
+    TIndexType leaf,
+    TIndexType leftChildIdx,
+    TIndexType rightChildIdx,
+    const TVector<TIndexType>& indices,
+    OMPNPar::TLocalExecutor* localExecutor
+);
 
 // for depthwise
 template <typename LocalExecutorType>

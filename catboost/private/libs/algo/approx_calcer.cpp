@@ -36,6 +36,7 @@
 
 #include <util/generic/algorithm.h>
 #include <util/generic/ymath.h>
+#include <util/stream/file.h>
 
 template <bool StoreExpApprox, int VectorWidth>
 inline void UpdateApproxKernel(const double* leafDeltas, const TIndexType* indices, double* deltasDimension) {
@@ -1044,17 +1045,23 @@ void CalcApproxForLeafStruct(
     TLearnContext* ctx,
     TVector<TVector<TVector<double>>>* approxesDelta // [bodyTailId][approxDim][docIdxInPermuted]
 ) {
+    TUnbufferedFileOutput file("/nfs/inn/proj/numerics1/Users/kshvets/catboost_for_private_repo/catboost_optimizations/catboost/pytest/_cpp_test2.txt");
+    file.Write("CalcApproxForLeafStruct1\n",25);
+    file.Write("CalcApproxForLeafStruct2\n",25);
+
     const TVector<TIndexType> indices = BuildIndices(
         fold,
         tree,
         data,
         EBuildIndicesDataParts::LearnOnly,
         ctx->OMPLocalExecutor);
+    file.Write("CalcApproxForLeafStruct2\n",25);
     const int approxDimension = ctx->LearnProgress->ApproxDimension;
     const int leafCount = GetLeafCount(tree);
     const auto treeMonotoneConstraints = GetTreeMonotoneConstraints(
         tree,
         ctx->Params.ObliviousTreeOptions->MonotoneConstraints.Get());
+    file.Write("CalcApproxForLeafStruct3\n",25);
 
     TVector<ui64> randomSeeds = GenRandUI64Vector(fold.BodyTailArr.ysize(), randomSeed);
     approxesDelta->resize(fold.BodyTailArr.ysize());
