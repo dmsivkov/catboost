@@ -51,7 +51,6 @@
 #include <util/random/shuffle.h>
 #include <util/system/compiler.h>
 #include <util/system/hp_timer.h>
-#include <util/stream/file.h>
 
 #include <functional>
 
@@ -345,10 +344,7 @@ static void Train(
     TLearnContext* ctx,
     TVector<TVector<TVector<double>>>* testMultiApprox // [test][dim][docIdx]
 ) {
-/*    TUnbufferedFileOutput file("/nfs/inn/proj/numerics1/Users/kshvets/catboost_for_private_repo/catboost_optimizations/catboost/pytest/_cpp_test.txt");
-    file.Write("@#@456789\n",10);
-    file.Write("2#@456789\n",10);
-*/    TProfileInfo& profile = ctx->Profile;
+    TProfileInfo& profile = ctx->Profile;
 
     TMetricsData metricsData;
     InitializeAndCheckMetricData(internalOptions, data, *ctx, &metricsData);
@@ -400,7 +396,6 @@ static void Train(
             timer.Reset();
         }
         TrainOneIteration(data, ctx);
-//file.Write("TrainOneIteration\n",18);
 
         CalcErrors(data, metricsData, iter, ctx);
 

@@ -21,7 +21,6 @@
 #include <catboost/private/libs/algo_helpers/error_functions.h>
 #include <catboost/private/libs/distributed/master.h>
 #include <catboost/private/libs/distributed/worker.h>
-#include <util/stream/file.h>
 
 TErrorTracker BuildErrorTracker(
     EMetricBestValue bestValueType,
@@ -41,9 +40,6 @@ static void UpdateLearningFold(
     TFold* fold,
     TLearnContext* ctx
 ) {
-/*    TUnbufferedFileOutput file("/nfs/inn/proj/numerics1/Users/kshvets/catboost_for_private_repo/catboost_optimizations/catboost/pytest/_cpp_test.txt");
-    file.Write("UpdateLearningFold1\n",20);
-*/
     TVector<TVector<TVector<double>>> approxDelta;
 
     CalcApproxForLeafStruct(
@@ -55,7 +51,6 @@ static void UpdateLearningFold(
         ctx,
         &approxDelta
     );
-//    file.Write("UpdateLearningFold2\n",20);
 
     if (error.GetIsExpApprox()) {
         UpdateBodyTailApprox</*StoreExpApprox*/true>(
@@ -72,7 +67,6 @@ static void UpdateLearningFold(
             fold
         );
     }
-//    file.Write("UpdateLearningFold3\n",20);
 
 }
 
@@ -177,19 +171,14 @@ void CalcApproxesLeafwise(
 }
 
 void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* ctx) {
-/*    TUnbufferedFileOutput file("/nfs/inn/proj/numerics1/Users/kshvets/catboost_for_private_repo/catboost_optimizations/catboost/pytest/_cpp_test.txt");
-    file.Write("TrainOneIteration1\n",19);
-*/
     const auto error = BuildError(ctx->Params, ctx->ObjectiveDescriptor);
     ctx->LearnProgress->HessianType = error->GetHessianType();
     TProfileInfo& profile = ctx->Profile;
-//    file.Write("TrainOneIteration2\n",19);
 
     const size_t iterationIndex = ctx->LearnProgress->TreeStruct.size();
     const int foldCount = ctx->LearnProgress->Folds.ysize();
     const double modelLength
         = double(iterationIndex) * ctx->Params.BoostingOptions->LearningRate;
-  //  file.Write("TrainOneIteration3\n",19);
 
     CheckInterrupted(); // check after long-lasting operation
 
@@ -214,7 +203,6 @@ void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* c
             ctx->LearnProgress->ModelShrinkHistory.push_back(1.0);
         }
     }
- //   file.Write("TrainOneIteration4\n",19);
 
     TVariant<TSplitTree, TNonSymmetricTreeStructure> bestTree;
     {
@@ -244,7 +232,6 @@ void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* c
             MapSetDerivatives(ctx);
         }
         profile.AddOperation("Calc derivatives");
-//    file.Write("TrainOneIteration5\n",19);
 
         GreedyTensorSearch(
             data,
@@ -254,7 +241,6 @@ void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* c
             ctx,
             &bestTree
         );
-  //  file.Write("TrainOneIteration6\n",19);
 
     }
     CheckInterrupted(); // check after long-lasting operation
@@ -317,10 +303,9 @@ void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* c
 
         if (ctx->Params.SystemOptions->IsSingleHost()) {
             const TVector<ui64> randomSeeds = GenRandUI64Vector(foldCount, ctx->LearnProgress->Rand.GenRand());
-/*            ctx->LocalExecutor->ExecRangeWithThrow(
+            ctx->LocalExecutor->ExecRangeWithThrow(
                 [&](int foldId) {
-*/
-        for(int foldId = 0; foldId < foldCount; ++foldId) {
+//        for(int foldId = 0; foldId < foldCount; ++foldId) {
                     UpdateLearningFold(
                         data,
                         *error,
@@ -329,13 +314,12 @@ void TrainOneIteration(const NCB::TTrainingDataProviders& data, TLearnContext* c
                         trainFolds[foldId],
                         ctx
                     );
-                }/*,
+                },
                 0,
                 foldCount,
                 NPar::TLocalExecutor::WAIT_COMPLETE
             );
-*/
-  //      file.Write("TrainOneIteration7\n",19);
+
             profile.AddOperation("CalcApprox tree struct and update tree structure approx");
             CheckInterrupted(); // check after long-lasting operation
 

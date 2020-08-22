@@ -32,7 +32,6 @@
 #include <util/generic/xrange.h>
 #include <util/string/builder.h>
 #include <util/system/mem_info.h>
-#include <util/stream/file.h>
 
 
 using namespace NCB;
@@ -1385,8 +1384,7 @@ static TNonSymmetricTreeStructure GreedyTensorSearchLossguide(
         findBestCandidate(leftChildIdx);
         findBestCandidate(rightChildIdx);
     }
-/*    TUnbufferedFileOutput file("/nfs/inn/proj/numerics1/Users/kshvets/catboost_for_private_repo/catboost_optimizations/catboost/pytest/_cpp_test.txt");
-    file.Write("GreedyTensorSearchLossguide finished\n",37);*/
+
     return currentStructure;
 }
 
