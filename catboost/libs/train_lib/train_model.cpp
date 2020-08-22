@@ -379,6 +379,7 @@ static void Train(
         trainingCallbacks->OnSaveSnapshot(out);
     };
     OMPNPar::TLocalExecutor omp_executor;
+    omp_executor.RunAdditionalThreads( ctx->LocalExecutor->GetThreadCount());
     ctx->OMPLocalExecutor = &omp_executor;
 
     for (ui32 iter = ctx->LearnProgress->GetCurrentTrainingIterationCount();
